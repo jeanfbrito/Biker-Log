@@ -14,7 +14,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import com.motosensorlogger.MainActivity
-import com.motosensorlogger.R
 import com.motosensorlogger.data.*
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean

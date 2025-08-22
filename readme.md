@@ -124,10 +124,133 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 - **Tested Devices**: Samsung Galaxy S23 Ultra
 
 ### Development Environment  
-- **Android Studio**: 2023.1+
+- **Android Studio**: 2023.1+ (optional, can build from command line)
+- **Java**: JDK 17 or higher
+- **Android SDK**: API level 34
 - **Target SDK**: 34 (Android 14)
-- **Languages**: Java/Kotlin for Android, Python for analysis
-- **Libraries**: SensorManager API, LocationManager, pandas (analysis)
+- **Build Tools**: 34.0.0
+- **Gradle**: 8.2 (included via wrapper)
+- **Languages**: Kotlin for Android, Python for analysis
+
+## 📲 Installation & Setup
+
+### Prerequisites
+- Java 17 or higher
+- Android device with USB debugging enabled
+
+### Quick Start (Just like npm/yarn!)
+
+1. **Clone and enter the project:**
+   ```bash
+   git clone https://github.com/yourusername/moto-sensor-logger.git
+   cd moto-sensor-logger
+   ```
+
+2. **Install dependencies (one-time setup):**
+   ```bash
+   ./setup_android_env.sh
+   ```
+   Think of this like `npm install` - it downloads all Android dependencies and SDKs
+
+3. **Build and run on your device:**
+   ```bash
+   ./build_and_run.sh
+   ```
+   This is like `npm run dev` - it builds and launches the app on your connected device
+
+That's it! The app should now be running on your phone.
+
+### What's Actually Happening?
+
+Unlike JavaScript projects that use `package.json` and `node_modules`, Android projects use:
+- **Gradle** (like npm/yarn) - manages dependencies
+- **build.gradle** (like package.json) - lists dependencies
+- **./gradlew** (like npx) - runs gradle commands
+- Dependencies are automatically downloaded when you build (no separate install step needed!)
+
+### Common Commands
+
+```bash
+# Install dependencies and build (happens automatically)
+./gradlew build
+
+# Build debug version
+./gradlew assembleDebug
+
+# Install on connected device
+./gradlew installDebug
+
+# Clean build files
+./gradlew clean
+
+# See all available tasks
+./gradlew tasks
+```
+
+### Manual Setup
+
+If you prefer manual setup or the script doesn't work:
+
+1. **Install Java 17:**
+   - macOS: `brew install openjdk@17`
+   - Ubuntu/Debian: `sudo apt-get install openjdk-17-jdk`
+   - Windows: Download from [Oracle](https://www.oracle.com/java/technologies/downloads/)
+
+2. **Install Android SDK:**
+   - Download [Android Studio](https://developer.android.com/studio) (includes SDK)
+   - Or install [command line tools only](https://developer.android.com/studio#command-tools)
+
+3. **Set environment variables:**
+   ```bash
+   export ANDROID_HOME=$HOME/Library/Android/sdk  # macOS
+   export ANDROID_HOME=$HOME/Android/Sdk          # Linux
+   export PATH=$ANDROID_HOME/platform-tools:$PATH
+   ```
+
+4. **Configure the project:**
+   ```bash
+   # Create local.properties with your SDK path
+   echo "sdk.dir=$ANDROID_HOME" > local.properties
+   
+   # Make gradlew executable
+   chmod +x gradlew
+   ```
+
+5. **Build and install:**
+   ```bash
+   ./gradlew assembleDebug
+   ./gradlew installDebug
+   ```
+
+### Using Android Studio
+
+1. Open Android Studio
+2. Select "Open an existing project"
+3. Navigate to the project directory
+4. Let Android Studio sync the project
+5. Click "Run" (green play button) to build and install
+
+### Troubleshooting
+
+- **"SDK location not found"**: Run `./setup_android_env.sh` or manually create `local.properties`
+- **"Gradle sync failed"**: Check Java version: `java -version` (should be 17+)
+- **"Device not found"**: Enable USB debugging in Developer Options on your Android device
+- **Permission denied**: Run `sudo chown -R $(whoami) .` in project directory
+
+### Device Setup
+
+1. **Enable Developer Options:**
+   - Go to Settings → About Phone
+   - Tap "Build Number" 7 times
+
+2. **Enable USB Debugging:**
+   - Go to Settings → Developer Options
+   - Enable "USB Debugging"
+   - Connect device via USB
+
+3. **Grant Permissions:**
+   - On first launch, grant all requested permissions
+   - For background location: Choose "Allow all the time"
 
 ## 📈 Data Analysis Capabilities
 
