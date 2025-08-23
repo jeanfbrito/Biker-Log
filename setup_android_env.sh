@@ -155,20 +155,65 @@ fi
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$PATH"
 echo ""
 
-# Check for sdkmanager
+# Install platform-tools and other components
+echo "Installing Android SDK components..."
+
+# Try to find sdkmanager
+SDKMANAGER=""
 if command -v sdkmanager &> /dev/null; then
-    print_status "sdkmanager is available"
+    SDKMANAGER="sdkmanager"
+elif [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+    SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+elif [ -f "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
+    SDKMANAGER="$ANDROID_HOME/tools/bin/sdkmanager"
+fi
+
+if [ -n "$SDKMANAGER" ]; then
+    print_status "Found sdkmanager at: $SDKMANAGER"
     
     # Accept licenses
     echo "Accepting Android SDK licenses..."
-    yes | sdkmanager --licenses &> /dev/null || true
+    yes | $SDKMANAGER --licenses 2>/dev/null || true
     
     # Install required SDK components
-    echo "Installing required Android SDK components..."
-    sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" &> /dev/null
+    echo "Installing platform-tools..."
+    $SDKMANAGER "platform-tools" 2>/dev/null || {
+        print_warning "Failed to install via sdkmanager, trying direct download..."
+        
+        # Direct download platform-tools as fallback
+        if [ "$OS" == "macos" ]; then
+            PLATFORM_TOOLS_URL="https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+        else
+            PLATFORM_TOOLS_URL="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+        fi
+        
+        echo "Downloading platform-tools..."
+        curl -o /tmp/platform-tools.zip "$PLATFORM_TOOLS_URL"
+        unzip -q -o /tmp/platform-tools.zip -d "$ANDROID_HOME/"
+        rm /tmp/platform-tools.zip
+        print_status "Platform-tools installed via direct download"
+    }
+    
+    echo "Installing Android SDK 34 and build tools..."
+    $SDKMANAGER "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+    
     print_status "Android SDK components installed"
 else
-    print_warning "sdkmanager not found. Please install Android SDK manually"
+    print_warning "sdkmanager not found, downloading platform-tools directly..."
+    
+    # Direct download platform-tools
+    if [ "$OS" == "macos" ]; then
+        PLATFORM_TOOLS_URL="https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+    else
+        PLATFORM_TOOLS_URL="https://dl.google.com/android/repository/platform-tools-latest-linux.zip"
+    fi
+    
+    echo "Downloading platform-tools..."
+    curl -L -o /tmp/platform-tools.zip "$PLATFORM_TOOLS_URL"
+    mkdir -p "$ANDROID_HOME"
+    unzip -q -o /tmp/platform-tools.zip -d "$ANDROID_HOME/"
+    rm /tmp/platform-tools.zip
+    print_status "Platform-tools installed"
 fi
 echo ""
 

@@ -138,27 +138,59 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 - Java 17 or higher
 - Android device with USB debugging enabled
 
-### Quick Start (Just like npm/yarn!)
+### 📱 IMPORTANT: Prepare Your Android Device First!
 
-1. **Clone and enter the project:**
+1. **Enable Developer Mode:**
+   - Go to Settings → About Phone
+   - Tap "Build Number" 7 times
+   - You'll see "You are now a developer!"
+
+2. **Enable USB Debugging:**
+   - Go to Settings → Developer Options
+   - Turn ON "USB Debugging"
+   - Turn ON "Install via USB" (if available)
+
+3. **Connect Your Phone:**
+   - Connect phone to computer via USB cable
+   - On your phone, tap "Allow" when asked about USB debugging
+   - Select "File Transfer" or "MTP" mode (not "Charging only")
+
+4. **Verify Connection:**
    ```bash
-   git clone https://github.com/yourusername/moto-sensor-logger.git
-   cd moto-sensor-logger
+   # After connecting, check if device is detected:
+   adb devices
+   # You should see your device listed
    ```
 
-2. **Install dependencies (one-time setup):**
-   ```bash
-   ./setup_android_env.sh
-   ```
-   Think of this like `npm install` - it downloads all Android dependencies and SDKs
+### Quick Start 
 
-3. **Build and run on your device:**
-   ```bash
-   ./build_and_run.sh
-   ```
-   This is like `npm run dev` - it builds and launches the app on your connected device
+#### 🎯 Simplest Method (2024 Way):
+```bash
+# Clone the project
+git clone https://github.com/yourusername/moto-sensor-logger.git
+cd moto-sensor-logger
 
-That's it! The app should now be running on your phone.
+# Connect your Android device via USB (see above)
+
+# Run (Gradle handles everything automatically!)
+./run.sh
+```
+That's it! The app will be installed and launched on your phone.
+
+#### 🖥️ Using Android Studio (Recommended for beginners):
+1. Download [Android Studio](https://developer.android.com/studio) 
+2. Open Android Studio → "Open" → Select this folder
+3. Wait for sync to complete (automatic)
+4. Connect your phone and click the green ▶️ button
+
+#### 🛠️ Manual Setup (if the above doesn't work):
+```bash
+# One-time setup
+./setup_android_env.sh
+
+# Build and run
+./build_and_run.sh
+```
 
 ### What's Actually Happening?
 
