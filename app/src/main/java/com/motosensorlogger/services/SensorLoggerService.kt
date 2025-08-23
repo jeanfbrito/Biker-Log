@@ -19,6 +19,7 @@ import com.motosensorlogger.calibration.CalibrationService
 import com.motosensorlogger.calibration.CalibrationData
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.takeWhile
 import java.util.concurrent.atomic.AtomicBoolean
 import android.util.Log
 
@@ -127,9 +128,9 @@ class SensorLoggerService : Service(), SensorEventListener {
     }
     
     private fun startCalibration() {
-        Log.d("SensorLogger", "Starting calibration - simplified version")
+        Log.d("SensorLogger", "Starting calibration")
         
-        // Register sensors
+        // Register sensors for calibration
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
@@ -140,12 +141,41 @@ class SensorLoggerService : Service(), SensorEventListener {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
         
-        // Skip calibration for now - just start logging immediately
-        // TODO: Fix calibration system
+        // Start calibration service
+        calibrationService.startCalibration()
+        
+        // Monitor calibration progress in background
         serviceScope.launch {
-            updateNotification("Starting recording...")
-            delay(500) // Brief delay
-            finishCalibration()
+            calibrationService.progress
+                .takeWhile { progress ->
+                    // Continue collecting until completed or failed
+                    progress.state != CalibrationService.State.COMPLETED &&
+                    progress.state != CalibrationService.State.FAILED
+                }
+                .collect { progress ->
+                    Log.d("SensorLogger", "Calibration: ${progress.state} - ${progress.message}")
+                    updateNotification(progress.message)
+                }
+            
+            // Check final state
+            val finalState = calibrationService.state.value
+            when (finalState) {
+                CalibrationService.State.COMPLETED -> {
+                    Log.d("SensorLogger", "Calibration completed successfully")
+                    calibrationData = calibrationService.currentCalibration
+                    finishCalibration()
+                }
+                CalibrationService.State.FAILED -> {
+                    Log.e("SensorLogger", "Calibration failed")
+                    updateNotification("Calibration failed - starting anyway")
+                    delay(1000)
+                    finishCalibration() // Start anyway without calibration
+                }
+                else -> {
+                    Log.w("SensorLogger", "Unexpected calibration state: $finalState")
+                    finishCalibration()
+                }
+            }
         }
     }
     
@@ -244,7 +274,29 @@ class SensorLoggerService : Service(), SensorEventListener {
     
     
     override fun onSensorChanged(event: SensorEvent) {
-        // Skip calibration logic for now
+        // During calibration, feed samples to calibration service
+        if (calibrationService.state.value == CalibrationService.State.COLLECTING) {
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> {
+                    lastAccel = event.values.clone()
+                }
+                Sensor.TYPE_GYROSCOPE -> {
+                    lastGyro = event.values.clone()
+                }
+                Sensor.TYPE_MAGNETIC_FIELD -> {
+                    // Send complete sensor set when we get magnetometer data
+                    if (lastAccel.any { it != 0f }) {
+                        calibrationService.addSensorSample(
+                            lastAccel,
+                            lastGyro,
+                            event.values.clone()
+                        )
+                    }
+                }
+            }
+            return
+        }
+        
         if (!isLogging.get() || isPaused.get()) return
         
         val timestamp = System.currentTimeMillis()
@@ -390,6 +442,7 @@ class SensorLoggerService : Service(), SensorEventListener {
     fun isCurrentlyPaused(): Boolean = isPaused.get()
     fun getCsvLogger(): CsvLogger = csvLogger
     fun getCalibrationData(): com.motosensorlogger.calibration.CalibrationData? = calibrationData
+    fun getCalibrationService(): CalibrationService = calibrationService
     
     override fun onDestroy() {
         super.onDestroy()

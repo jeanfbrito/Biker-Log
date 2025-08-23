@@ -34,7 +34,7 @@ class SettingsManager private constructor(context: Context) {
         // Default values
         const val DEFAULT_CALIBRATION_DURATION_MS = 2000L
         const val DEFAULT_CALIBRATION_MIN_SAMPLES = 50
-        const val DEFAULT_CALIBRATION_STABILITY = 0.5f
+        const val DEFAULT_CALIBRATION_STABILITY = 2.0f  // More forgiving for handheld
         const val DEFAULT_VIBRATION_BASELINE = true
         const val DEFAULT_MAGNETIC_CALIBRATION = true
         const val DEFAULT_SENSOR_SAMPLING_RATE = 100 // Hz

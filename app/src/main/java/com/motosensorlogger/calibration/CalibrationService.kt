@@ -82,6 +82,7 @@ class CalibrationService(context: Context) {
             
             // Process calibration after duration
             if (_state.value == State.COLLECTING) {
+                android.util.Log.d("CalibrationService", "Timer finished, processing calibration")
                 processCalibration()
             }
         }
@@ -143,9 +144,12 @@ class CalibrationService(context: Context) {
         // Check if device was stable
         val stabilityThreshold = settingsManager.calibrationSettings.value.stabilityThreshold
         val wasStable = accelStd.all { it < stabilityThreshold } && 
-                       gyroStd.all { it < 0.1f }  // Gyro should be very still
+                       gyroStd.all { it < 0.5f }  // Relaxed for handheld/motorcycle mount
+        
+        android.util.Log.d("CalibrationService", "Stability check: accelStd=${accelStd.contentToString()}, threshold=$stabilityThreshold, wasStable=$wasStable")
         
         if (!wasStable) {
+            android.util.Log.e("CalibrationService", "Device was moving: accelStd=${accelStd.contentToString()}, gyroStd=${gyroStd.contentToString()}")
             failCalibration("Device was moving during calibration")
             return
         }

@@ -32,6 +32,8 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.flow.StateFlow
+import com.motosensorlogger.calibration.CalibrationService
 
 class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener {
     
@@ -67,6 +69,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     private var vdop = 0.0f
     private var fixTime = 0L
     private var gpsProvider = "GPS"
+    
+    private var calibrationJob: Job? = null
     
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
@@ -472,15 +476,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         // Bind to service
         bindToService()
         
-        // Update UI immediately to show "starting" state
+        // Update UI immediately to show calibration state
         binding.btnStartStop.text = "Stop Recording"
         binding.btnStartStop.setBackgroundColor(
             ContextCompat.getColor(this, android.R.color.holo_red_dark)
         )
-        binding.tvStatus.text = "Status: Recording"
-        binding.btnPauseResume.isEnabled = true
+        binding.tvStatus.text = "Calibrating..."
+        binding.btnPauseResume.isEnabled = false  // Disable pause during calibration
         
-        Toast.makeText(this, "Logging started", Toast.LENGTH_SHORT).show()
+        // Start monitoring calibration progress
+        monitorCalibrationProgress()
+        
+        Toast.makeText(this, "Starting calibration...", Toast.LENGTH_SHORT).show()
     }
     
     private fun stopLogging() {
@@ -666,9 +673,65 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         unbindFromService()
     }
     
+    private fun monitorCalibrationProgress() {
+        calibrationJob?.cancel()
+        calibrationJob = updateScope.launch {
+            // Wait a bit for service to bind
+            delay(100)
+            
+            while (!isServiceBound) {
+                delay(50)
+            }
+            
+            sensorService?.let { service ->
+                // Get calibration service from sensor service
+                val calibrationService = service.getCalibrationService()
+                
+                // Show calibration UI
+                binding.calibrationProgressLayout.visibility = View.VISIBLE
+                
+                // Monitor calibration progress
+                calibrationService.progress.collect { progress ->
+                    when (progress.state) {
+                        CalibrationService.State.COLLECTING -> {
+                            binding.tvCalibrationStatus.text = progress.message
+                            binding.calibrationProgressBar.progress = progress.percent.toInt()
+                            binding.tvCalibrationCountdown.text = "${(progress.remainingTimeMs / 1000) + 1}s"
+                        }
+                        CalibrationService.State.PROCESSING -> {
+                            binding.tvCalibrationStatus.text = "Processing..."
+                            binding.calibrationProgressBar.progress = 100
+                            binding.tvCalibrationCountdown.text = "..."
+                        }
+                        CalibrationService.State.COMPLETED -> {
+                            // Hide calibration UI and show recording state
+                            binding.calibrationProgressLayout.visibility = View.GONE
+                            binding.tvStatus.text = "Status: Recording"
+                            binding.btnPauseResume.isEnabled = true
+                            Toast.makeText(this@MainActivity, "Calibration complete!", Toast.LENGTH_SHORT).show()
+                            calibrationJob?.cancel()
+                        }
+                        CalibrationService.State.FAILED -> {
+                            // Hide calibration UI and show recording anyway
+                            binding.calibrationProgressLayout.visibility = View.GONE
+                            binding.tvStatus.text = "Status: Recording (no calibration)"
+                            binding.btnPauseResume.isEnabled = true
+                            // Show the actual failure reason
+                            val failureReason = progress.message
+                            Toast.makeText(this@MainActivity, failureReason, Toast.LENGTH_LONG).show()
+                            calibrationJob?.cancel()
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         stopSensorMonitoring()
+        calibrationJob?.cancel()
         updateScope.cancel()
     }
 }

@@ -54,6 +54,47 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvTitle" />
 
+    <!-- Calibration Progress Bar -->
+    <LinearLayout
+        android:id="@+id/calibrationProgressLayout"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvStatus">
+
+        <TextView
+            android:id="@+id/tvCalibrationStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hold device still..."
+            android:textAlignment="center"
+            android:textSize="16sp"
+            android:paddingBottom="8dp" />
+
+        <ProgressBar
+            android:id="@+id/calibrationProgressBar"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="100"
+            android:progress="0" />
+
+        <TextView
+            android:id="@+id/tvCalibrationCountdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2s"
+            android:textAlignment="center"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:paddingTop="8dp" />
+
+    </LinearLayout>
+
     <Button
         android:id="@+id/btnStartStop"
         android:layout_width="0dp"
@@ -65,7 +106,7 @@
         android:backgroundTint="@android:color/holo_green_dark"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvStatus" />
+        app:layout_constraintTop_toBottomOf="@id/calibrationProgressLayout" />
 
     <Button
         android:id="@+id/btnPauseResume"
