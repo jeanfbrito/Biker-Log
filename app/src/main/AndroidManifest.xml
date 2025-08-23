@@ -68,8 +68,7 @@
         <service
             android:name=".services.SensorLoggerService"
             android:exported="false"
-            android:foregroundServiceType="location"
-            android:process=":sensor_logger" />
+            android:foregroundServiceType="location" />
             
         <!-- File provider for sharing log files -->
         <provider
