@@ -18,8 +18,7 @@ import com.motosensorlogger.data.*
 import com.motosensorlogger.calibration.CalibrationService
 import com.motosensorlogger.calibration.CalibrationData
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
 import android.util.Log
 
@@ -104,7 +103,10 @@ class SensorLoggerService : Service(), SensorEventListener {
     
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START_LOGGING -> startLogging()
+            ACTION_START_LOGGING -> {
+                val skipCalibration = intent.getBooleanExtra("skip_calibration", false)
+                startLogging(skipCalibration)
+            }
             ACTION_STOP_LOGGING -> stopLogging()
             ACTION_PAUSE_LOGGING -> pauseLogging()
             ACTION_RESUME_LOGGING -> resumeLogging()
@@ -112,23 +114,40 @@ class SensorLoggerService : Service(), SensorEventListener {
         return START_STICKY
     }
     
-    private fun startLogging() {
+    private fun startLogging(skipCalibration: Boolean = false) {
         if (isLogging.get()) return
         
+        // CRITICAL: Always reset calibration state to prevent mixed data
+        calibrationData = null
+        calibrationService.clearCalibration()
+        
+        Log.d("SensorLogger", "Starting logging - skipCalibration=$skipCalibration, calibrationData=null")
+        
         // Start foreground service
-        startForeground(NOTIFICATION_ID, createNotification("Calibrating sensors..."))
+        startForeground(NOTIFICATION_ID, createNotification(
+            if (skipCalibration) "Starting recording..." else "Calibrating sensors..."
+        ))
         
         // Acquire wake lock
         if (!wakeLock.isHeld) {
             wakeLock.acquire(12 * 60 * 60 * 1000L) // 12 hours max
         }
         
-        // Start calibration process
-        startCalibration()
+        if (skipCalibration) {
+            // Start recording directly without calibration
+            Log.d("SensorLogger", "User chose to skip calibration - recording without calibration")
+            finishCalibration()  // This will now correctly log as non-calibrated
+        } else {
+            // Start calibration process
+            startCalibration()
+        }
     }
     
     private fun startCalibration() {
         Log.d("SensorLogger", "Starting calibration")
+        
+        // Update state to calibrating
+        updateServiceState()
         
         // Register sensors for calibration
         accelerometer?.let {
@@ -164,29 +183,80 @@ class SensorLoggerService : Service(), SensorEventListener {
                     Log.d("SensorLogger", "Calibration completed successfully")
                     calibrationData = calibrationService.currentCalibration
                     finishCalibration()
+                    updateServiceState()
                 }
                 CalibrationService.State.FAILED -> {
                     Log.e("SensorLogger", "Calibration failed")
-                    updateNotification("Calibration failed - starting anyway")
-                    delay(1000)
-                    finishCalibration() // Start anyway without calibration
+                    updateNotification("Calibration failed")
+                    // Don't start recording automatically - wait for user decision
+                    // The MainActivity will show the dialog and handle the user's choice
+                    
+                    // Unregister sensors that were registered for calibration
+                    sensorManager.unregisterListener(this@SensorLoggerService)
+                    
+                    // Clean up calibration
+                    calibrationService.clearCalibration()
+                    
+                    // Update state to idle
+                    updateServiceState()
+                    
+                    // Stop foreground but keep service alive briefly for potential retry
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    if (wakeLock.isHeld) {
+                        wakeLock.release()
+                    }
+                    
+                    // Stop self after delay to allow for retry
+                    serviceScope.launch {
+                        delay(5000) // Wait 5 seconds for potential retry
+                        if (!isLogging.get()) {
+                            stopSelf()
+                        }
+                    }
                 }
                 else -> {
                     Log.w("SensorLogger", "Unexpected calibration state: $finalState")
-                    finishCalibration()
+                    // Don't start recording on unexpected state
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    if (wakeLock.isHeld) {
+                        wakeLock.release()
+                    }
                 }
             }
         }
     }
     
     private fun finishCalibration() {
+        // Update notification to show we're done calibrating
+        updateNotification("Starting recording...")
         // Start actual logging with calibration data
         startLoggingWithCalibration()
     }
     
     private fun startLoggingWithCalibration() {
-        // Start CSV logging with calibration reference (not transformation)
-        val calibrationHeader = calibrationData?.toCsvHeader() ?: ""
+        // CRITICAL: Ensure we have consistent calibration state
+        val validCalibrationData = calibrationData?.takeIf { 
+            it.referencePitch != null && 
+            it.referenceRoll != null && 
+            it.quality != null 
+        }
+        
+        val calibrationHeader = if (validCalibrationData != null) {
+            Log.d("SensorLogger", "Starting WITH calibration: pitch=${validCalibrationData.referencePitch}, roll=${validCalibrationData.referenceRoll}")
+            validCalibrationData.toCsvHeader()
+        } else {
+            Log.d("SensorLogger", "Starting WITHOUT calibration")
+            // Explicitly clear any partial calibration data
+            calibrationData = null
+            """
+# Calibration: {
+#   "status": "not_calibrated",
+#   "reason": "User skipped calibration or calibration failed",
+#   "timestamp": ${System.currentTimeMillis()},
+#   "note": "Raw sensor data without calibration reference"
+# }""".trimIndent()
+        }
+        
         if (!csvLogger.startLogging(calibrationHeader)) {
             stopSelf()
             return
@@ -194,6 +264,7 @@ class SensorLoggerService : Service(), SensorEventListener {
         
         isLogging.set(true)
         isPaused.set(false)
+        updateServiceState()
         
         // Re-register sensor listeners with high sampling rates
         sensorManager.unregisterListener(this)
@@ -217,12 +288,24 @@ class SensorLoggerService : Service(), SensorEventListener {
         // Update notification
         updateNotification("Recording sensor data...")
         
-        // Log session start with calibration info
+        // Log session start with calibration info - MUST match header state
+        val validCalibration = calibrationData?.takeIf { 
+            it.referencePitch != null && 
+            it.referenceRoll != null && 
+            it.quality != null 
+        }
+        
+        val sessionMetadata = if (validCalibration != null) {
+            "Calibrated: pitch=${"%.1f".format(validCalibration.referencePitch)}°, roll=${"%.1f".format(validCalibration.referenceRoll)}°, quality=${validCalibration.quality.getQualityLevel()}"
+        } else {
+            "Not calibrated - recording raw sensor data"
+        }
+        
         csvLogger.logEvent(
             SpecialEvent(
                 System.currentTimeMillis(),
                 SpecialEvent.EventType.SESSION_START,
-                metadata = "Calibrated: pitch=${calibrationData?.referencePitch?.let { "%.1f".format(it) }}°, roll=${calibrationData?.referenceRoll?.let { "%.1f".format(it) }}°, quality=${calibrationData?.quality?.getQualityLevel()}"
+                metadata = sessionMetadata
             )
         )
     }
@@ -240,6 +323,7 @@ class SensorLoggerService : Service(), SensorEventListener {
         )
         
         isLogging.set(false)
+        updateServiceState()
         
         // Unregister sensor listeners
         sensorManager.unregisterListener(this)
@@ -264,11 +348,13 @@ class SensorLoggerService : Service(), SensorEventListener {
     
     private fun pauseLogging() {
         isPaused.set(true)
+        updateServiceState()
         updateNotification("Logging paused")
     }
     
     private fun resumeLogging() {
         isPaused.set(false)
+        updateServiceState()
         updateNotification("Recording sensor data...")
     }
     
@@ -444,11 +530,38 @@ class SensorLoggerService : Service(), SensorEventListener {
     fun getCalibrationData(): com.motosensorlogger.calibration.CalibrationData? = calibrationData
     fun getCalibrationService(): CalibrationService = calibrationService
     
+    // Service state for UI synchronization
+    enum class ServiceState {
+        IDLE,
+        CALIBRATING,
+        RECORDING,
+        PAUSED
+    }
+    
+    // Reactive state that UI can observe
+    private val _serviceState = MutableStateFlow(ServiceState.IDLE)
+    val serviceState: StateFlow<ServiceState> = _serviceState.asStateFlow()
+    
+    private fun updateServiceState() {
+        val newState = when {
+            !isLogging.get() && calibrationService.state.value == CalibrationService.State.IDLE -> ServiceState.IDLE
+            calibrationService.state.value == CalibrationService.State.COLLECTING || 
+            calibrationService.state.value == CalibrationService.State.PROCESSING -> ServiceState.CALIBRATING
+            isLogging.get() && isPaused.get() -> ServiceState.PAUSED
+            isLogging.get() -> ServiceState.RECORDING
+            else -> ServiceState.IDLE
+        }
+        _serviceState.value = newState
+    }
+    
+    fun getCurrentState(): ServiceState = _serviceState.value
+    
     override fun onDestroy() {
         super.onDestroy()
         stopLogging()
         csvLogger.cleanup()
         calibrationService.dispose()
+        calibrationData = null  // Clean up calibration data
         serviceScope.cancel()
     }
 }

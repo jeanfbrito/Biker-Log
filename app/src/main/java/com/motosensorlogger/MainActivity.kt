@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     private var isSensorStatusExpanded = false
     private var updateJob: Job? = null
     private val updateScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var serviceStateJob: Job? = null
     
     // Sensor values
     private var lastAccel = floatArrayOf(0f, 0f, 0f)
@@ -102,10 +103,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             val binder = service as SensorLoggerService.LocalBinder
             sensorService = binder.getService()
             isServiceBound = true
+            
+            // Start observing service state reactively
+            observeServiceState()
+            
             updateUI()
         }
         
         override fun onServiceDisconnected(name: ComponentName?) {
+            serviceStateJob?.cancel()
             sensorService = null
             isServiceBound = false
             updateUI()
@@ -463,6 +469,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             return
         }
         
+        // First bind to service to ensure synchronization
+        bindToService()
+        
         val serviceIntent = Intent(this, SensorLoggerService::class.java).apply {
             action = SensorLoggerService.ACTION_START_LOGGING
         }
@@ -473,9 +482,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             startService(serviceIntent)
         }
         
-        // Bind to service
-        bindToService()
-        
         // Update UI immediately to show calibration state
         binding.btnStartStop.text = "Stop Recording"
         binding.btnStartStop.setBackgroundColor(
@@ -484,7 +490,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         binding.tvStatus.text = "Calibrating..."
         binding.btnPauseResume.isEnabled = false  // Disable pause during calibration
         
-        // Start monitoring calibration progress
+        // Start monitoring calibration progress - this will wait for binding
         monitorCalibrationProgress()
         
         Toast.makeText(this, "Starting calibration...", Toast.LENGTH_SHORT).show()
@@ -557,21 +563,44 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     
     private fun updateUI() {
         runOnUiThread {
-            val isLogging = sensorService?.isCurrentlyLogging() == true
-            val isPaused = sensorService?.isCurrentlyPaused() == true
+            val state = sensorService?.getCurrentState() ?: SensorLoggerService.ServiceState.IDLE
             
-            binding.btnStartStop.text = if (isLogging) "Stop Recording" else "Start Recording"
-            binding.btnStartStop.setBackgroundColor(
-                ContextCompat.getColor(this, if (isLogging) android.R.color.holo_red_dark else android.R.color.holo_green_dark)
-            )
-            
-            binding.btnPauseResume.isEnabled = isLogging
-            binding.btnPauseResume.text = if (isPaused) "Resume" else "Pause"
-            
-            binding.tvStatus.text = when {
-                isLogging && isPaused -> "Status: Paused"
-                isLogging -> "Status: Recording"
-                else -> "Status: Idle"
+            when (state) {
+                SensorLoggerService.ServiceState.IDLE -> {
+                    binding.btnStartStop.text = "Start Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_green_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = false
+                    binding.btnPauseResume.text = "Pause"
+                    binding.tvStatus.text = "Status: Idle"
+                }
+                SensorLoggerService.ServiceState.CALIBRATING -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = false
+                    binding.tvStatus.text = "Status: Calibrating"
+                }
+                SensorLoggerService.ServiceState.RECORDING -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = true
+                    binding.btnPauseResume.text = "Pause"
+                    binding.tvStatus.text = "Status: Recording"
+                }
+                SensorLoggerService.ServiceState.PAUSED -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = true
+                    binding.btnPauseResume.text = "Resume"
+                    binding.tvStatus.text = "Status: Paused"
+                }
             }
         }
     }
@@ -697,6 +726,43 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                             binding.tvCalibrationStatus.text = progress.message
                             binding.calibrationProgressBar.progress = progress.percent.toInt()
                             binding.tvCalibrationCountdown.text = "${(progress.remainingTimeMs / 1000) + 1}s"
+                            
+                            // Update quality indicator with color
+                            when (progress.stabilityLevel) {
+                                CalibrationService.StabilityLevel.EXCELLENT -> {
+                                    binding.tvCalibrationQuality.text = "Quality: Excellent ✓"
+                                    binding.tvCalibrationQuality.setTextColor(
+                                        ContextCompat.getColor(this@MainActivity, android.R.color.holo_green_dark)
+                                    )
+                                }
+                                CalibrationService.StabilityLevel.GOOD -> {
+                                    binding.tvCalibrationQuality.text = "Quality: Good"
+                                    binding.tvCalibrationQuality.setTextColor(
+                                        ContextCompat.getColor(this@MainActivity, android.R.color.holo_green_light)
+                                    )
+                                }
+                                CalibrationService.StabilityLevel.POOR -> {
+                                    binding.tvCalibrationQuality.text = "Quality: Poor - Hold steadier"
+                                    binding.tvCalibrationQuality.setTextColor(
+                                        ContextCompat.getColor(this@MainActivity, android.R.color.holo_orange_dark)
+                                    )
+                                    if (progress.canExtend) {
+                                        binding.tvCalibrationStatus.text = "Extending time..."
+                                    }
+                                }
+                                CalibrationService.StabilityLevel.BAD -> {
+                                    binding.tvCalibrationQuality.text = "Quality: Too much movement!"
+                                    binding.tvCalibrationQuality.setTextColor(
+                                        ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark)
+                                    )
+                                }
+                                CalibrationService.StabilityLevel.UNKNOWN -> {
+                                    binding.tvCalibrationQuality.text = "Quality: Checking..."
+                                    binding.tvCalibrationQuality.setTextColor(
+                                        ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray)
+                                    )
+                                }
+                            }
                         }
                         CalibrationService.State.PROCESSING -> {
                             binding.tvCalibrationStatus.text = "Processing..."
@@ -707,22 +773,140 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                             // Hide calibration UI and show recording state
                             binding.calibrationProgressLayout.visibility = View.GONE
                             binding.tvStatus.text = "Status: Recording"
+                            binding.btnStartStop.text = "Stop Recording"
+                            binding.btnStartStop.setBackgroundColor(
+                                ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark)
+                            )
                             binding.btnPauseResume.isEnabled = true
                             Toast.makeText(this@MainActivity, "Calibration complete!", Toast.LENGTH_SHORT).show()
                             calibrationJob?.cancel()
                         }
                         CalibrationService.State.FAILED -> {
-                            // Hide calibration UI and show recording anyway
+                            // Hide calibration UI
                             binding.calibrationProgressLayout.visibility = View.GONE
-                            binding.tvStatus.text = "Status: Recording (no calibration)"
-                            binding.btnPauseResume.isEnabled = true
-                            // Show the actual failure reason
-                            val failureReason = progress.message
-                            Toast.makeText(this@MainActivity, failureReason, Toast.LENGTH_LONG).show()
+                            
+                            // Cancel job first
                             calibrationJob?.cancel()
+                            
+                            // Unbind from service since it's stopping
+                            unbindFromService()
+                            
+                            // Show calibration failure dialog after a small delay
+                            val failureReason = progress.message
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                showCalibrationFailureDialog(failureReason)
+                            }, 200)
                         }
                         else -> {}
                     }
+                }
+            }
+        }
+    }
+    
+    private fun showCalibrationFailureDialog(failureReason: String) {
+        // First reset UI state since calibration failed
+        binding.tvStatus.text = "Status: Idle"
+        binding.btnStartStop.text = "Start Recording"
+        binding.btnStartStop.setBackgroundColor(
+            ContextCompat.getColor(this, android.R.color.holo_green_dark)
+        )
+        binding.btnPauseResume.isEnabled = false
+        
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Calibration Failed")
+            .setMessage("$failureReason\n\nWith the current settings, the calibration didn't meet the required quality.\n\nWhat would you like to do?")
+            .setPositiveButton("Retry") { _, _ ->
+                // Small delay to ensure service is fully stopped before retry
+                Handler(Looper.getMainLooper()).postDelayed({
+                    startLogging()
+                }, 500)
+            }
+            .setNeutralButton("Settings") { _, _ ->
+                // Open settings to adjust calibration parameters
+                val intent = Intent(this, SettingsActivity::class.java)
+                intent.putExtra("open_calibration_settings", true)
+                startActivity(intent)
+            }
+            .setNegativeButton("Skip Calibration") { _, _ ->
+                // Start recording without calibration
+                startLoggingWithoutCalibration()
+            }
+            .setCancelable(false)
+            .show()
+    }
+    
+    private fun startLoggingWithoutCalibration() {
+        // Send a special action to start without calibration
+        val serviceIntent = Intent(this, SensorLoggerService::class.java).apply {
+            action = SensorLoggerService.ACTION_START_LOGGING
+            putExtra("skip_calibration", true)
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        
+        // Update UI
+        binding.btnStartStop.text = "Stop Recording"
+        binding.btnStartStop.setBackgroundColor(
+            ContextCompat.getColor(this, android.R.color.holo_red_dark)
+        )
+        binding.tvStatus.text = "Status: Recording (no calibration)"
+        binding.btnPauseResume.isEnabled = true
+        
+        Toast.makeText(this, "Recording without calibration", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun observeServiceState() {
+        serviceStateJob?.cancel()
+        serviceStateJob = updateScope.launch {
+            sensorService?.serviceState?.collect { state ->
+                Log.d("MainActivity", "Service state changed to: $state")
+                updateUIForState(state)
+            }
+        }
+    }
+    
+    private fun updateUIForState(state: SensorLoggerService.ServiceState) {
+        runOnUiThread {
+            when (state) {
+                SensorLoggerService.ServiceState.IDLE -> {
+                    binding.btnStartStop.text = "Start Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_green_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = false
+                    binding.btnPauseResume.text = "Pause"
+                    binding.tvStatus.text = "Status: Idle"
+                }
+                SensorLoggerService.ServiceState.CALIBRATING -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = false
+                    binding.tvStatus.text = "Status: Calibrating"
+                }
+                SensorLoggerService.ServiceState.RECORDING -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = true
+                    binding.btnPauseResume.text = "Pause"
+                    binding.tvStatus.text = "Status: Recording"
+                }
+                SensorLoggerService.ServiceState.PAUSED -> {
+                    binding.btnStartStop.text = "Stop Recording"
+                    binding.btnStartStop.setBackgroundColor(
+                        ContextCompat.getColor(this, android.R.color.holo_red_dark)
+                    )
+                    binding.btnPauseResume.isEnabled = true
+                    binding.btnPauseResume.text = "Resume"
+                    binding.tvStatus.text = "Status: Paused"
                 }
             }
         }
@@ -732,6 +916,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         super.onDestroy()
         stopSensorMonitoring()
         calibrationJob?.cancel()
+        serviceStateJob?.cancel()
         updateScope.cancel()
     }
 }

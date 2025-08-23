@@ -27,8 +27,18 @@ class CalibrationService(context: Context) {
         val state: State,
         val percent: Float,
         val message: String,
-        val remainingTimeMs: Long = 0
+        val remainingTimeMs: Long = 0,
+        val stabilityLevel: StabilityLevel = StabilityLevel.UNKNOWN,
+        val canExtend: Boolean = false
     )
+    
+    enum class StabilityLevel {
+        UNKNOWN,
+        EXCELLENT,  // Green - very stable
+        GOOD,       // Yellow - acceptable
+        POOR,       // Orange - borderline
+        BAD         // Red - too much movement
+    }
     
     // State management
     private val _state = MutableStateFlow(State.IDLE)
@@ -43,6 +53,9 @@ class CalibrationService(context: Context) {
     private val gyroscopeSamples = mutableListOf<FloatArray>()
     private val magnetometerSamples = mutableListOf<FloatArray>()
     private var calibrationStartTime = 0L
+    private var calibrationExtended = false
+    private var extensionCount = 0
+    private val maxExtensions = 3  // Maximum times to extend calibration
     
     private var calibrationJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -51,7 +64,8 @@ class CalibrationService(context: Context) {
      * Start calibration process
      */
     fun startCalibration() {
-        if (_state.value != State.IDLE) {
+        if (_state.value != State.IDLE && _state.value != State.FAILED) {
+            android.util.Log.w("CalibrationService", "Cannot start calibration from state: ${_state.value}")
             return
         }
         
@@ -62,28 +76,46 @@ class CalibrationService(context: Context) {
         // Get calibration duration from settings
         val calibrationDurationMs = settingsManager.calibrationSettings.value.durationMs
         
-        // Start timeout timer
+        // Start timeout timer with stability monitoring
         calibrationJob = scope.launch {
             var elapsed = 0L
-            while (elapsed < calibrationDurationMs && _state.value == State.COLLECTING) {
+            var currentDuration = calibrationDurationMs
+            
+            while (_state.value == State.COLLECTING) {
                 elapsed = System.currentTimeMillis() - calibrationStartTime
-                val percent = (elapsed.toFloat() / calibrationDurationMs * 100).coerceIn(0f, 100f)
-                val remaining = calibrationDurationMs - elapsed
+                
+                // Check if we should extend calibration
+                if (elapsed >= currentDuration) {
+                    val stability = checkCurrentStability()
+                    
+                    // If stability is improving and we haven't extended too many times
+                    if (stability == StabilityLevel.POOR && extensionCount < maxExtensions) {
+                        // Extend by 1 second
+                        currentDuration += 1000
+                        extensionCount++
+                        android.util.Log.d("CalibrationService", "Extending calibration by 1s (attempt $extensionCount/$maxExtensions)")
+                    } else {
+                        // Time's up, process what we have
+                        android.util.Log.d("CalibrationService", "Timer finished, processing calibration")
+                        processCalibration()
+                        break
+                    }
+                }
+                
+                val percent = (elapsed.toFloat() / currentDuration * 100).coerceIn(0f, 100f)
+                val remaining = currentDuration - elapsed
+                val stability = checkCurrentStability()
                 
                 _progress.emit(Progress(
                     State.COLLECTING,
                     percent,
                     "Hold still... ${(remaining / 1000f).toInt() + 1}s",
-                    remaining
+                    remaining,
+                    stability,
+                    extensionCount < maxExtensions
                 ))
                 
                 delay(100) // Update every 100ms
-            }
-            
-            // Process calibration after duration
-            if (_state.value == State.COLLECTING) {
-                android.util.Log.d("CalibrationService", "Timer finished, processing calibration")
-                processCalibration()
             }
         }
     }
@@ -301,6 +333,32 @@ class CalibrationService(context: Context) {
         gyroscopeSamples.clear()
         magnetometerSamples.clear()
         calibrationStartTime = 0L
+        calibrationExtended = false
+        extensionCount = 0
+    }
+    
+    private fun checkCurrentStability(): StabilityLevel {
+        if (accelerometerSamples.size < 10) {
+            return StabilityLevel.UNKNOWN
+        }
+        
+        // Get last 10 samples for real-time stability check
+        val recentAccel = accelerometerSamples.takeLast(10)
+        val recentGyro = gyroscopeSamples.takeLast(10)
+        
+        // Calculate standard deviation of recent samples
+        val accelStd = calculateStandardDeviation(recentAccel)
+        val gyroStd = calculateStandardDeviation(recentGyro)
+        
+        val maxAccelStd = accelStd.maxOrNull() ?: Float.MAX_VALUE
+        val maxGyroStd = gyroStd.maxOrNull() ?: Float.MAX_VALUE
+        
+        return when {
+            maxAccelStd < 0.2f && maxGyroStd < 0.05f -> StabilityLevel.EXCELLENT
+            maxAccelStd < 0.5f && maxGyroStd < 0.1f -> StabilityLevel.GOOD
+            maxAccelStd < 1.0f && maxGyroStd < 0.3f -> StabilityLevel.POOR
+            else -> StabilityLevel.BAD
+        }
     }
     
     var currentCalibration: CalibrationData? = null

@@ -75,6 +75,16 @@
             android:textSize="16sp"
             android:paddingBottom="8dp" />
 
+        <TextView
+            android:id="@+id/tvCalibrationQuality"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Quality: Checking..."
+            android:textAlignment="center"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:paddingBottom="8dp" />
+
         <ProgressBar
             android:id="@+id/calibrationProgressBar"
             style="@style/Widget.AppCompat.ProgressBar.Horizontal"

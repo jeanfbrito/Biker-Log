@@ -28,51 +28,49 @@ class CsvLogger(private val context: Context) {
     companion object {
         private const val LOG_DIR = "MotoSensorLogs"
         private const val BUFFER_SIZE = 32 * 1024 // 32KB buffer for efficient writes
+    }
+    
+    /**
+     * Start logging session with new file
+     * @param calibrationHeader Optional calibration header to prepend
+     */
+    fun startLogging(calibrationHeader: String = ""): Boolean {
+        if (isLogging.get()) return false
         
-        private fun buildHeader(calibrationData: Any?): String {
+        try {
+            // Create log directory
+            val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            val logDir = File(documentsDir, LOG_DIR)
+            if (!logDir.exists()) {
+                logDir.mkdirs()
+            }
+            
+            // Create new log file with timestamp
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            logFile = File(logDir, "moto_log_$timestamp.csv")
+            
+            // Initialize writer with large buffer
+            writer = BufferedWriter(FileWriter(logFile), BUFFER_SIZE)
+            
+            // Build the complete header with all metadata
+            // The calibrationHeader parameter already contains the calibration section
+            // So we build the rest of the header around it
+            
             val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).format(Date())
             val deviceStr = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
             
-            // Extract calibration info if available
-            val calibrationSection = if (calibrationData != null) {
-                // Using reflection to avoid circular dependency
-                val calibClass = calibrationData.javaClass
-                val gravityField = calibClass.getDeclaredField("gravityVector")
-                val pitchField = calibClass.getDeclaredField("initialPitch") 
-                val rollField = calibClass.getDeclaredField("initialRoll")
-                val yawField = calibClass.getDeclaredField("initialYaw")
-                
-                gravityField.isAccessible = true
-                pitchField.isAccessible = true
-                rollField.isAccessible = true
-                yawField.isAccessible = true
-                
-                val gravity = gravityField.get(calibrationData) as FloatArray
-                val pitch = pitchField.get(calibrationData) as Float
-                val roll = rollField.get(calibrationData) as Float
-                val yaw = yawField.get(calibrationData) as Float
-                
-                """# Calibration: {
-#   "gravity_vector": [${gravity[0]}, ${gravity[1]}, ${gravity[2]}],
-#   "initial_pitch": $pitch,
-#   "initial_roll": $roll,
-#   "initial_yaw": $yaw,
-#   "calibration_info": "Phone mounted at pitch=${"%.1f".format(pitch)}°, roll=${"%.1f".format(roll)}°. All sensor data is relative to this mounting position."
-# }
-"""
-            } else {
-                """# Calibration: {
+            // Write complete header with calibration section if provided
+            val completeHeader = """
+# Moto Sensor Log v1.1
+# Device: $deviceStr  
+# Date: $dateStr
+${calibrationHeader.ifEmpty { 
+"""# Calibration: {
 #   "status": "uncalibrated",
 #   "warning": "No calibration performed. Sensor data is in device coordinates."
-# }
-"""
-            }
-            
-            return """
-# Moto Sensor Log v1.1
-# Device: $deviceStr
-# Date: $dateStr
-$calibrationSection# Schema: {
+# }"""
+}}
+# Schema: {
 #   "version": "1.0",
 #   "events": {
 #     "GPS": {
@@ -118,42 +116,9 @@ $calibrationSection# Schema: {
 #     }
 #   }
 # }
-timestamp,sensor_type,data1,data2,data3,data4,data5,data6
-""".trimIndent()
-        }
-    }
-    
-    /**
-     * Start logging session with new file
-     * @param calibrationHeader Optional calibration header to prepend
-     */
-    fun startLogging(calibrationHeader: String = ""): Boolean {
-        if (isLogging.get()) return false
-        
-        try {
-            // Create log directory
-            val documentsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-            val logDir = File(documentsDir, LOG_DIR)
-            if (!logDir.exists()) {
-                logDir.mkdirs()
-            }
+timestamp,sensor_type,data1,data2,data3,data4,data5,data6""".trimIndent()
             
-            // Create new log file with timestamp
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            logFile = File(logDir, "moto_log_$timestamp.csv")
-            
-            // Initialize writer with large buffer
-            writer = BufferedWriter(FileWriter(logFile), BUFFER_SIZE)
-            
-            // Write calibration header if provided
-            if (calibrationHeader.isNotEmpty()) {
-                writer?.write(calibrationHeader)
-                writer?.newLine()
-            }
-            
-            // Write standard header
-            val header = buildHeader(null)
-            writer?.write(header)
+            writer?.write(completeHeader)
             writer?.newLine()
             
             // Start writer coroutine
