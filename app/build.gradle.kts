@@ -98,6 +98,9 @@ dependencies {
     // WorkManager for background processing
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     
+    // Charting library for real-time telemetry visualization
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

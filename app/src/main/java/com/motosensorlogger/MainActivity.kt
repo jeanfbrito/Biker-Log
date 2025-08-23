@@ -27,6 +27,7 @@ import com.motosensorlogger.adapters.LogFileAdapter
 import com.motosensorlogger.databinding.ActivityMainBinding
 import com.motosensorlogger.services.SensorLoggerService
 import kotlinx.coroutines.*
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -123,6 +124,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         
         setupUI()
         setupSensorStatusCard()
+        setupBottomNavigation()
         checkPermissions()
         setupRecyclerView()
     }
@@ -152,6 +154,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         }
         
         updateUI()
+    }
+    
+    private fun setupBottomNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.navigation_recording -> {
+                    // Already on recording tab
+                    true
+                }
+                R.id.navigation_telemetry -> {
+                    // Launch telemetry activity
+                    val intent = Intent(this, TelemetryActivity::class.java)
+                    startActivity(intent)
+                    // Don't keep telemetry selected when returning
+                    false
+                }
+                else -> false
+            }
+        }
+        
+        // Set recording as default selected
+        binding.bottomNavigation.selectedItemId = R.id.navigation_recording
     }
     
     private fun setupSensorStatusCard() {
