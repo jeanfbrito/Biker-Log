@@ -771,13 +771,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                         }
                         CalibrationService.State.COMPLETED -> {
                             // Hide calibration UI and show recording state
-                            binding.calibrationProgressLayout.visibility = View.GONE
-                            binding.tvStatus.text = "Status: Recording"
-                            binding.btnStartStop.text = "Stop Recording"
-                            binding.btnStartStop.setBackgroundColor(
-                                ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark)
-                            )
-                            binding.btnPauseResume.isEnabled = true
+                            runOnUiThread {
+                                binding.calibrationProgressLayout.visibility = View.GONE
+                                binding.tvCalibrationQuality.text = ""
+                                binding.tvStatus.text = "Status: Recording"
+                                binding.btnStartStop.text = "Stop Recording"
+                                binding.btnStartStop.setBackgroundColor(
+                                    ContextCompat.getColor(this@MainActivity, android.R.color.holo_red_dark)
+                                )
+                                binding.btnPauseResume.isEnabled = true
+                            }
                             Toast.makeText(this@MainActivity, "Calibration complete!", Toast.LENGTH_SHORT).show()
                             calibrationJob?.cancel()
                         }
