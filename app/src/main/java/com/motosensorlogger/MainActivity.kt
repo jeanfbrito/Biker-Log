@@ -3,8 +3,16 @@ package com.motosensorlogger
 import android.Manifest
 import android.content.*
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.*
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -17,16 +25,37 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.motosensorlogger.adapters.LogFileAdapter
 import com.motosensorlogger.databinding.ActivityMainBinding
 import com.motosensorlogger.services.SensorLoggerService
+import kotlinx.coroutines.*
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener {
     
     private lateinit var binding: ActivityMainBinding
     private var sensorService: SensorLoggerService? = null
     private var isServiceBound = false
     private lateinit var logFileAdapter: LogFileAdapter
+    
+    // Sensor monitoring
+    private lateinit var sensorManager: SensorManager
+    private lateinit var locationManager: LocationManager
+    private var accelerometer: Sensor? = null
+    private var gyroscope: Sensor? = null
+    private var magnetometer: Sensor? = null
+    private var barometer: Sensor? = null
+    
+    private var isSensorStatusExpanded = false
+    private var updateJob: Job? = null
+    private val updateScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    
+    // Sensor values
+    private var lastAccel = floatArrayOf(0f, 0f, 0f)
+    private var lastGyro = floatArrayOf(0f, 0f, 0f)
+    private var lastMag = floatArrayOf(0f, 0f, 0f)
+    private var lastPressure = 0f
+    private var lastLocation: Location? = null
+    private var satelliteCount = 0
     
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
@@ -74,7 +103,17 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
+        // Initialize sensors
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        
         setupUI()
+        setupSensorStatusCard()
         checkPermissions()
         setupRecyclerView()
     }
@@ -105,6 +144,144 @@ class MainActivity : AppCompatActivity() {
         
         updateUI()
     }
+    
+    private fun setupSensorStatusCard() {
+        // Handle collapse/expand
+        binding.sensorStatusHeader.setOnClickListener {
+            isSensorStatusExpanded = !isSensorStatusExpanded
+            
+            if (isSensorStatusExpanded) {
+                binding.sensorStatusContent.visibility = View.VISIBLE
+                binding.ivExpandCollapse.rotation = 180f
+                startSensorMonitoring()
+            } else {
+                binding.sensorStatusContent.visibility = View.GONE
+                binding.ivExpandCollapse.rotation = 0f
+                stopSensorMonitoring()
+            }
+        }
+        
+        // Update sensor availability text
+        updateSensorAvailability()
+    }
+    
+    private fun updateSensorAvailability() {
+        binding.tvBaroStatus.text = if (barometer != null) "Pressure: -- hPa | Altitude: -- m" else "Not available"
+        binding.tvMagStatus.text = if (magnetometer != null) "Mag: 0.0, 0.0, 0.0 μT" else "Not available"
+    }
+    
+    private fun startSensorMonitoring() {
+        // Register sensor listeners
+        accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        gyroscope?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        magnetometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        barometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        
+        // Start location updates
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
+            == PackageManager.PERMISSION_GRANTED) {
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                1000, // 1 second
+                0f,   // 0 meters
+                this
+            )
+        }
+        
+        // Start UI update coroutine
+        updateJob = updateScope.launch {
+            while (isActive) {
+                updateSensorUI()
+                delay(100) // Update UI every 100ms
+            }
+        }
+    }
+    
+    private fun stopSensorMonitoring() {
+        // Unregister sensor listeners
+        sensorManager.unregisterListener(this)
+        
+        // Stop location updates
+        locationManager.removeUpdates(this)
+        
+        // Cancel update job
+        updateJob?.cancel()
+        updateJob = null
+    }
+    
+    private fun updateSensorUI() {
+        // Update IMU
+        binding.tvImuStatus.text = String.format(
+            "Accel: %.1f, %.1f, %.1f m/s²",
+            lastAccel[0], lastAccel[1], lastAccel[2]
+        )
+        binding.tvGyroStatus.text = String.format(
+            "Gyro: %.1f, %.1f, %.1f °/s",
+            lastGyro[0], lastGyro[1], lastGyro[2]
+        )
+        
+        // Update Magnetometer
+        if (magnetometer != null) {
+            binding.tvMagStatus.text = String.format(
+                "Mag: %.1f, %.1f, %.1f μT",
+                lastMag[0], lastMag[1], lastMag[2]
+            )
+        }
+        
+        // Update Barometer
+        if (barometer != null && lastPressure > 0) {
+            val altitude = SensorManager.getAltitude(
+                SensorManager.PRESSURE_STANDARD_ATMOSPHERE,
+                lastPressure
+            )
+            binding.tvBaroStatus.text = String.format(
+                "Pressure: %.1f hPa | Altitude: %.1f m",
+                lastPressure, altitude
+            )
+        }
+        
+        // Update GPS
+        lastLocation?.let { loc ->
+            val status = if (loc.accuracy < 10) "Good" else if (loc.accuracy < 30) "Fair" else "Poor"
+            binding.tvGpsStatus.text = "Status: $status (${loc.accuracy.toInt()}m accuracy)"
+            binding.tvGpsDetails.text = String.format(
+                "Lat: %.5f | Lon: %.5f | Alt: %.0fm",
+                loc.latitude, loc.longitude, loc.altitude
+            )
+        } ?: run {
+            binding.tvGpsStatus.text = "Status: Waiting for lock..."
+            binding.tvGpsDetails.text = "Satellites: -- | Accuracy: --"
+        }
+    }
+    
+    override fun onSensorChanged(event: SensorEvent) {
+        when (event.sensor.type) {
+            Sensor.TYPE_ACCELEROMETER -> lastAccel = event.values.clone()
+            Sensor.TYPE_GYROSCOPE -> lastGyro = event.values.clone()
+            Sensor.TYPE_MAGNETIC_FIELD -> lastMag = event.values.clone()
+            Sensor.TYPE_PRESSURE -> lastPressure = event.values[0]
+        }
+    }
+    
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Not needed for this implementation
+    }
+    
+    override fun onLocationChanged(location: Location) {
+        lastLocation = location
+    }
+    
+    override fun onProviderEnabled(provider: String) {}
+    override fun onProviderDisabled(provider: String) {}
+    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
     
     private fun setupRecyclerView() {
         logFileAdapter = LogFileAdapter(
@@ -342,5 +519,11 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         unbindFromService()
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        stopSensorMonitoring()
+        updateScope.cancel()
     }
 }
