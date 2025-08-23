@@ -174,7 +174,7 @@ jobs:
         echo "Download the APK file below and install it on your Android device." >> release_notes.md
         echo "" >> release_notes.md
         echo "### Requirements" >> release_notes.md
-        echo "- Android 8.0 (API 26) or higher" >> release_notes.md
+        echo "- Android 11 (API 30) or higher" >> release_notes.md
         echo "- Location and sensor permissions" >> release_notes.md
         echo "" >> release_notes.md
         echo "### Checksums" >> release_notes.md

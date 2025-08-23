@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved test coverage for calibration service
 - Enhanced documentation structure
+- Updated minimum SDK to API 30 (Android 11) for improved GNSS support
 
 ### Fixed
 - Fixed UI bug where calibration elements stayed visible after recording starts
