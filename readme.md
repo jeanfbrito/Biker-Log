@@ -135,154 +135,58 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 ## 📲 Installation & Setup
 
 ### Prerequisites
-- Java 17 or higher
-- Android device with USB debugging enabled
+- Java 17 or higher (check with `java -version`)
+- Android phone with USB cable
 
-### 📱 IMPORTANT: Prepare Your Android Device First!
+### 📱 Setup Your Phone (One-time)
 
 1. **Enable Developer Mode:**
-   - Go to Settings → About Phone
-   - Tap "Build Number" 7 times
-   - You'll see "You are now a developer!"
+   - Settings → About Phone → Tap "Build Number" 7 times
 
 2. **Enable USB Debugging:**
-   - Go to Settings → Developer Options
-   - Turn ON "USB Debugging"
-   - Turn ON "Install via USB" (if available)
+   - Settings → Developer Options → Turn ON "USB Debugging"
 
-3. **Connect Your Phone:**
-   - Connect phone to computer via USB cable
-   - On your phone, tap "Allow" when asked about USB debugging
-   - Select "File Transfer" or "MTP" mode (not "Charging only")
+3. **Connect to Computer:**
+   - Connect via USB cable
+   - Tap "Allow" when asked about USB debugging
+   - Select "File Transfer" mode (not "Charging only")
 
-4. **Verify Connection:**
-   ```bash
-   # After connecting, check if device is detected:
-   adb devices
-   # You should see your device listed
-   ```
+### 🚀 Install & Run
 
-### Quick Start 
-
-#### 🎯 Simplest Method (2024 Way):
 ```bash
 # Clone the project
 git clone https://github.com/yourusername/moto-sensor-logger.git
 cd moto-sensor-logger
 
-# Connect your Android device via USB (see above)
+# Install on your phone (Gradle auto-downloads everything!)
+./gradlew installDebug
 
-# Run (Gradle handles everything automatically!)
-./run.sh
-```
-That's it! The app will be installed and launched on your phone.
-
-#### 🖥️ Using Android Studio (Recommended for beginners):
-1. Download [Android Studio](https://developer.android.com/studio) 
-2. Open Android Studio → "Open" → Select this folder
-3. Wait for sync to complete (automatic)
-4. Connect your phone and click the green ▶️ button
-
-#### 🛠️ Manual Setup (if the above doesn't work):
-```bash
-# One-time setup
-./setup_android_env.sh
-
-# Build and run
-./build_and_run.sh
+# Or use the shortcut script:
+./install.sh
 ```
 
-### What's Actually Happening?
+**That's it!** Gradle automatically downloads the Android SDK, build tools, and all dependencies. No manual setup needed!
 
-Unlike JavaScript projects that use `package.json` and `node_modules`, Android projects use:
-- **Gradle** (like npm/yarn) - manages dependencies
-- **build.gradle** (like package.json) - lists dependencies
-- **./gradlew** (like npx) - runs gradle commands
-- Dependencies are automatically downloaded when you build (no separate install step needed!)
+### 🖥️ Alternative: Use Android Studio
+
+1. Download [Android Studio](https://developer.android.com/studio)
+2. Open this project folder
+3. Click the green ▶️ button
 
 ### Common Commands
 
 ```bash
-# Install dependencies and build (happens automatically)
-./gradlew build
-
-# Build debug version
-./gradlew assembleDebug
-
-# Install on connected device
-./gradlew installDebug
-
-# Clean build files
-./gradlew clean
-
-# See all available tasks
-./gradlew tasks
+./gradlew installDebug    # Build and install on phone
+./gradlew assembleDebug   # Just build APK
+./gradlew clean           # Clean build files
+./gradlew tasks           # See all available tasks
 ```
-
-### Manual Setup
-
-If you prefer manual setup or the script doesn't work:
-
-1. **Install Java 17:**
-   - macOS: `brew install openjdk@17`
-   - Ubuntu/Debian: `sudo apt-get install openjdk-17-jdk`
-   - Windows: Download from [Oracle](https://www.oracle.com/java/technologies/downloads/)
-
-2. **Install Android SDK:**
-   - Download [Android Studio](https://developer.android.com/studio) (includes SDK)
-   - Or install [command line tools only](https://developer.android.com/studio#command-tools)
-
-3. **Set environment variables:**
-   ```bash
-   export ANDROID_HOME=$HOME/Library/Android/sdk  # macOS
-   export ANDROID_HOME=$HOME/Android/Sdk          # Linux
-   export PATH=$ANDROID_HOME/platform-tools:$PATH
-   ```
-
-4. **Configure the project:**
-   ```bash
-   # Create local.properties with your SDK path
-   echo "sdk.dir=$ANDROID_HOME" > local.properties
-   
-   # Make gradlew executable
-   chmod +x gradlew
-   ```
-
-5. **Build and install:**
-   ```bash
-   ./gradlew assembleDebug
-   ./gradlew installDebug
-   ```
-
-### Using Android Studio
-
-1. Open Android Studio
-2. Select "Open an existing project"
-3. Navigate to the project directory
-4. Let Android Studio sync the project
-5. Click "Run" (green play button) to build and install
 
 ### Troubleshooting
 
-- **"SDK location not found"**: Run `./setup_android_env.sh` or manually create `local.properties`
-- **"Gradle sync failed"**: Check Java version: `java -version` (should be 17+)
-- **"Device not found"**: Enable USB debugging in Developer Options on your Android device
-- **Permission denied**: Run `sudo chown -R $(whoami) .` in project directory
-
-### Device Setup
-
-1. **Enable Developer Options:**
-   - Go to Settings → About Phone
-   - Tap "Build Number" 7 times
-
-2. **Enable USB Debugging:**
-   - Go to Settings → Developer Options
-   - Enable "USB Debugging"
-   - Connect device via USB
-
-3. **Grant Permissions:**
-   - On first launch, grant all requested permissions
-   - For background location: Choose "Allow all the time"
+- **"No connected devices"**: Check USB debugging is enabled and cable is connected
+- **"Java not found"**: Install Java 17+ (`brew install openjdk@17` on Mac)
+- **Build fails**: Make sure your phone is connected before running
 
 ## 📈 Data Analysis Capabilities
 
