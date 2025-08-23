@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.motosensorlogger.views.GForceView
 import com.motosensorlogger.views.InclinometerView
+import com.motosensorlogger.views.BarInclinometerView
 import kotlinx.coroutines.*
 import kotlin.math.*
 
@@ -30,7 +31,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     
     // Custom views
     private lateinit var inclinometerView: InclinometerView
+    private lateinit var barInclinometerView: BarInclinometerView
     private lateinit var gForceView: GForceView
+    private var useBarInclinometer = false
     
     // Buttons
     private lateinit var btnZero: Button
@@ -82,6 +85,30 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         }
         mainLayout.addView(inclinometerTitle)
         
+        // Container for inclinometer views (declare early for button access)
+        val inclinometerContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0
+            ).apply {
+                weight = 1f
+            }
+        }
+        
+        // Classic inclinometer view
+        inclinometerView = InclinometerView(this)
+        val inclinometerParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        )
+        
+        // Bar inclinometer view
+        barInclinometerView = BarInclinometerView(this)
+        
+        // Initially show classic view
+        inclinometerContainer.addView(inclinometerView, inclinometerParams)
+        
         // Calibration buttons layout
         val calibrationLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -96,6 +123,7 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             setPadding(40, 20, 40, 20)
             setOnClickListener {
                 inclinometerView.zeroCalibration()
+                barInclinometerView.zeroCalibration()
                 showCalibrationStatus(true)
             }
         }
@@ -114,22 +142,38 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             setPadding(40, 20, 40, 20)
             setOnClickListener {
                 inclinometerView.resetCalibration()
+                barInclinometerView.resetCalibration()
                 showCalibrationStatus(false)
             }
         }
         calibrationLayout.addView(btnReset)
         
-        mainLayout.addView(calibrationLayout)
-        
-        // Inclinometer view
-        inclinometerView = InclinometerView(this)
-        val inclinometerParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0
-        ).apply {
-            weight = 1f
+        // Add spacer
+        val spacer2 = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(40, 1)
         }
-        mainLayout.addView(inclinometerView, inclinometerParams)
+        calibrationLayout.addView(spacer2)
+        
+        // Add style toggle button
+        val btnToggleStyle = Button(this).apply {
+            text = "STYLE"
+            setBackgroundColor(Color.argb(255, 0, 100, 150))
+            setTextColor(Color.WHITE)
+            setPadding(40, 20, 40, 20)
+            setOnClickListener {
+                useBarInclinometer = !useBarInclinometer
+                inclinometerContainer.removeAllViews()
+                if (useBarInclinometer) {
+                    inclinometerContainer.addView(barInclinometerView, inclinometerParams)
+                } else {
+                    inclinometerContainer.addView(inclinometerView, inclinometerParams)
+                }
+            }
+        }
+        calibrationLayout.addView(btnToggleStyle)
+        
+        mainLayout.addView(calibrationLayout)
+        mainLayout.addView(inclinometerContainer)
         
         // Pitch and Roll text displays
         val angleLayout = LinearLayout(this).apply {
@@ -385,11 +429,16 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     private fun updateUI() {
-        // Update inclinometer
+        // Update both inclinometers
         inclinometerView.setAngles(pitch, roll)
+        barInclinometerView.setAngles(pitch, roll)
         
-        // Get display angles (after calibration)
-        val displayAngles = inclinometerView.getDisplayAngles()
+        // Get display angles (after calibration) from active view
+        val displayAngles = if (useBarInclinometer) {
+            barInclinometerView.getDisplayAngles()
+        } else {
+            inclinometerView.getDisplayAngles()
+        }
         val displayPitch = displayAngles.first
         val displayRoll = displayAngles.second
         
@@ -457,6 +506,8 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
                 
                 // Roll: rotation around Y axis (left/right lean)
                 roll = Math.toDegrees(atan2(-gravity[0].toDouble(), gravity[2].toDouble())).toFloat()
+                
+                // No limits - full range of motion
             }
         }
     }

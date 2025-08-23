@@ -129,9 +129,9 @@ class InclinometerView @JvmOverloads constructor(
     }
     
     private fun updateDisplayAngles() {
-        // Apply calibration offsets
-        pitch = (rawPitch - pitchOffset).coerceIn(-maxAngle, maxAngle)
-        roll = (rawRoll - rollOffset).coerceIn(-maxAngle, maxAngle)
+        // Apply calibration offsets (no limits)
+        pitch = rawPitch - pitchOffset
+        roll = rawRoll - rollOffset
         invalidate()
     }
     
@@ -156,7 +156,8 @@ class InclinometerView @JvmOverloads constructor(
         
         // Draw angle grid lines
         val gridStep = 10
-        for (angle in -maxAngle.toInt()..maxAngle.toInt() step gridStep) {
+        val visibleRange = maxAngle.toInt()
+        for (angle in -visibleRange..visibleRange step gridStep) {
             if (angle != 0) {
                 val alpha = if (angle % 20 == 0) 120 else 60
                 gridPaint.color = Color.argb(alpha, Color.red(gridColor), Color.green(gridColor), Color.blue(gridColor))
@@ -199,8 +200,9 @@ class InclinometerView @JvmOverloads constructor(
         canvas.save()
         canvas.rotate(-roll, centerX, centerY)
         
-        // Horizon line position based on pitch
-        val horizonY = centerY + (pitch * radius / maxAngle)
+        // Horizon line position based on pitch (scale to fit display)
+        val scaledPitch = pitch.coerceIn(-maxAngle, maxAngle)
+        val horizonY = centerY + (scaledPitch * radius / maxAngle)
         
         horizonPaint.strokeWidth = 3f
         canvas.drawLine(centerX - radius, horizonY, centerX + radius, horizonY, horizonPaint)
@@ -226,8 +228,8 @@ class InclinometerView @JvmOverloads constructor(
         )
         canvas.drawArc(arcRect, 180f, 180f, false, rollIndicatorPaint)
         
-        // Draw roll scale marks
-        for (angle in -40..40 step 10) {
+        // Draw roll scale marks (full range -90 to 90)
+        for (angle in -90..90 step 10) {
             canvas.save()
             canvas.rotate(angle.toFloat(), centerX, centerY)
             
@@ -245,9 +247,10 @@ class InclinometerView @JvmOverloads constructor(
             canvas.restore()
         }
         
-        // Draw roll pointer
+        // Draw roll pointer (clamp display rotation to ±90 degrees)
         canvas.save()
-        canvas.rotate(-roll, centerX, centerY)
+        val displayRoll = roll.coerceIn(-90f, 90f)
+        canvas.rotate(-displayRoll, centerX, centerY)
         val pointerPath = Path().apply {
             moveTo(centerX, centerY - radius * 0.85f)
             lineTo(centerX - 10, centerY - radius * 0.75f)
@@ -262,6 +265,17 @@ class InclinometerView @JvmOverloads constructor(
             textPaint.textSize = 20f
             textPaint.color = Color.argb(200, 0, 255, 0)
             canvas.drawText("CAL", centerX, centerY + radius * 0.7f, textPaint)
+        }
+        
+        // Draw actual angle values when they exceed visual range
+        textPaint.textSize = 25f
+        if (kotlin.math.abs(pitch) > maxAngle) {
+            textPaint.color = Color.RED
+            canvas.drawText(String.format("PITCH: %.1f°", pitch), centerX, centerY - radius - 40, textPaint)
+        }
+        if (kotlin.math.abs(roll) > 90f) {
+            textPaint.color = Color.RED
+            canvas.drawText(String.format("ROLL: %.1f°", roll), centerX, centerY + radius + 60, textPaint)
         }
     }
 }
