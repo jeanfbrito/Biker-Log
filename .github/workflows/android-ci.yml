@@ -1,0 +1,302 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  lint:
+    name: Lint Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Run Android Lint
+      run: ./gradlew lint
+    
+    - name: Upload lint results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: lint-results
+        path: app/build/reports/lint-results-*.html
+        retention-days: 7
+
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Run unit tests
+      run: ./gradlew testDebugUnitTest --stacktrace
+    
+    - name: Generate test report
+      uses: dorny/test-reporter@v1
+      if: success() || failure()
+      with:
+        name: Unit Test Results
+        path: app/build/test-results/testDebugUnitTest/*.xml
+        reporter: java-junit
+        fail-on-error: false
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-test-results
+        path: |
+          app/build/reports/tests/testDebugUnitTest/
+          app/build/test-results/testDebugUnitTest/
+        retention-days: 7
+    
+    - name: Upload coverage reports
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: app/build/reports/coverage/
+        retention-days: 7
+
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, unit-test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Build debug APK
+      run: ./gradlew assembleDebug --stacktrace
+    
+    - name: Upload debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-apk
+        path: app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
+    
+    - name: Build release APK
+      run: ./gradlew assembleRelease --stacktrace
+    
+    - name: Upload release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-apk
+        path: app/build/outputs/apk/release/app-release-unsigned.apk
+        retention-days: 7
+
+  analyze:
+    name: Code Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Check for hardcoded secrets
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.pull_request.base.sha }}
+        head: ${{ github.event.pull_request.head.sha }}
+    
+    - name: Run dependency check
+      run: ./gradlew dependencyCheckAnalyze || true
+      continue-on-error: true
+    
+    - name: Check for outdated dependencies
+      run: ./gradlew dependencyUpdates -Drevision=release
+      continue-on-error: true
+
+  validate-pr:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check PR title
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          perf
+          test
+          chore
+          revert
+        requireScope: false
+        subjectPattern: ^(?![A-Z]).+$
+        subjectPatternError: |
+          The subject "{subject}" found in the pull request title "{title}"
+          didn't match the configured pattern. Please ensure that the subject
+          doesn't start with an uppercase character.
+    
+    - name: Check for CHANGELOG entry
+      if: github.event.pull_request.draft == false
+      run: |
+        if ! grep -q "## \[Unreleased\]" CHANGELOG.md 2>/dev/null; then
+          echo "::warning::No CHANGELOG.md found or no [Unreleased] section"
+        fi
+    
+    - name: Label PR
+      uses: actions/labeler@v4
+      with:
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
+
+  comment-results:
+    name: Comment PR Results
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && always()
+    needs: [lint, unit-test, build, analyze]
+    
+    steps:
+    - name: Comment PR
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const issue_number = context.issue.number;
+          
+          // Get job statuses
+          const jobs = ['lint', 'unit-test', 'build', 'analyze'];
+          const statuses = {};
+          
+          for (const job of jobs) {
+            try {
+              const result = ${{ toJson(needs) }}[job];
+              statuses[job] = result ? result.result : 'pending';
+            } catch (e) {
+              statuses[job] = 'pending';
+            }
+          }
+          
+          // Create status icons
+          const getIcon = (status) => {
+            switch(status) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'cancelled': return '⚠️';
+              default: return '⏳';
+            }
+          };
+          
+          // Build comment body
+          const body = `## CI Results
+          
+          | Check | Status |
+          |-------|--------|
+          | Lint | ${getIcon(statuses.lint)} |
+          | Unit Tests | ${getIcon(statuses['unit-test'])} |
+          | Build | ${getIcon(statuses.build)} |
+          | Code Analysis | ${getIcon(statuses.analyze)} |
+          
+          [View full CI logs](${context.payload.pull_request.html_url}/checks)
+          
+          ---
+          <sub>🤖 Generated by GitHub Actions</sub>`;
+          
+          // Find existing comment
+          const comments = await github.rest.issues.listComments({
+            owner,
+            repo,
+            issue_number,
+          });
+          
+          const botComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('## CI Results')
+          );
+          
+          // Update or create comment
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: botComment.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+          }

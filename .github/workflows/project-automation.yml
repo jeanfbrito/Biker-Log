@@ -1,0 +1,272 @@
+name: Project Board Automation
+
+on:
+  issues:
+    types: [opened, closed, assigned, labeled, unlabeled]
+  pull_request:
+    types: [opened, closed, ready_for_review, converted_to_draft, merged]
+
+jobs:
+  update_project_board:
+    runs-on: ubuntu-latest
+    if: github.repository == 'jeanfbrito/Biker-Log'
+    
+    steps:
+      - name: Add item to project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/jeanfbrito/projects/1  # Update this URL
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          
+      - name: Set status based on issue/PR state
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const eventName = context.eventName;
+            const action = context.payload.action;
+            
+            console.log(`Event: ${eventName}, Action: ${action}`);
+            
+            // Determine target status based on automation rules
+            let targetStatus = null;
+            
+            if (eventName === 'issues') {
+              const issue = context.payload.issue;
+              const labels = issue.labels.map(label => label.name);
+              
+              if (action === 'opened') {
+                targetStatus = 'Backlog';
+                console.log('New issue opened - moving to Backlog');
+              } else if (action === 'assigned') {
+                targetStatus = 'To Do';
+                console.log('Issue assigned - moving to To Do');
+              } else if (action === 'labeled') {
+                const labelName = context.payload.label.name;
+                if (labelName === 'in-progress-ai') {
+                  targetStatus = 'In Progress';
+                  console.log('Issue labeled in-progress-ai - moving to In Progress');
+                } else if (labelName === 'needs-qa') {
+                  targetStatus = 'In Review';
+                  console.log('Issue labeled needs-qa - moving to In Review');
+                }
+              } else if (action === 'closed') {
+                targetStatus = 'Done';
+                console.log('Issue closed - moving to Done');
+              }
+            } else if (eventName === 'pull_request') {
+              if (action === 'opened' || action === 'ready_for_review') {
+                targetStatus = 'In Review';
+                console.log('PR opened/ready for review - moving to In Review');
+              } else if (action === 'closed' || action === 'merged') {
+                targetStatus = 'Done';
+                console.log('PR closed/merged - moving to Done');
+              }
+            }
+            
+            if (targetStatus) {
+              console.log(`Target status determined: ${targetStatus}`);
+              // Note: The actual status update would require additional GraphQL mutations
+              // This is a placeholder for the status update logic
+              
+              // For now, we'll log the intended action
+              core.setOutput('target_status', targetStatus);
+            } else {
+              console.log('No status change needed for this event');
+            }
+
+  # Alternative job using a different approach for project automation
+  update_project_status:
+    runs-on: ubuntu-latest
+    if: github.repository == 'jeanfbrito/Biker-Log'
+    needs: update_project_board
+    
+    steps:
+      - name: Update project item status
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+          script: |
+            // This is a more complete implementation that would update the project status
+            // You'll need to customize this based on your specific project structure
+            
+            const projectOwner = 'jeanfbrito';
+            const projectNumber = 1; // Update this with your actual project number
+            
+            // Get project ID
+            const projectQuery = `
+              query($owner: String!, $projectNumber: Int!) {
+                user(login: $owner) {
+                  projectV2(number: $projectNumber) {
+                    id
+                    fields(first: 20) {
+                      nodes {
+                        ... on ProjectV2Field {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+            
+            try {
+              const projectData = await github.graphql(projectQuery, {
+                owner: projectOwner,
+                projectNumber: projectNumber
+              });
+              
+              const project = projectData.user.projectV2;
+              if (!project) {
+                console.log('Project not found');
+                return;
+              }
+              
+              console.log(`Project ID: ${project.id}`);
+              
+              // Find the Status field
+              const statusField = project.fields.nodes.find(field => 
+                field.name === 'Status' && field.options
+              );
+              
+              if (!statusField) {
+                console.log('Status field not found');
+                return;
+              }
+              
+              console.log('Status field found:', statusField.name);
+              
+              // Get the content ID (issue or PR node ID)
+              const contentId = context.payload.issue?.node_id || context.payload.pull_request?.node_id;
+              if (!contentId) {
+                console.log('No content ID found');
+                return;
+              }
+              
+              // Find project item for this content
+              const itemQuery = `
+                query($projectId: ID!, $contentId: ID!) {
+                  node(id: $projectId) {
+                    ... on ProjectV2 {
+                      items(first: 100) {
+                        nodes {
+                          id
+                          content {
+                            ... on Issue {
+                              id
+                            }
+                            ... on PullRequest {
+                              id
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+              
+              const itemData = await github.graphql(itemQuery, {
+                projectId: project.id,
+                contentId: contentId
+              });
+              
+              const projectItem = itemData.node.items.nodes.find(item => 
+                item.content && item.content.id === contentId
+              );
+              
+              if (!projectItem) {
+                console.log('Project item not found for this content');
+                return;
+              }
+              
+              console.log(`Project item found: ${projectItem.id}`);
+              
+              // Determine target status (same logic as previous job)
+              const eventName = context.eventName;
+              const action = context.payload.action;
+              let targetStatusName = null;
+              
+              if (eventName === 'issues') {
+                if (action === 'opened') {
+                  targetStatusName = 'Backlog';
+                } else if (action === 'assigned') {
+                  targetStatusName = 'To Do';
+                } else if (action === 'labeled') {
+                  const labelName = context.payload.label.name;
+                  if (labelName === 'in-progress-ai') {
+                    targetStatusName = 'In Progress';
+                  } else if (labelName === 'needs-qa') {
+                    targetStatusName = 'In Review';
+                  }
+                } else if (action === 'closed') {
+                  targetStatusName = 'Done';
+                }
+              } else if (eventName === 'pull_request') {
+                if (action === 'opened' || action === 'ready_for_review') {
+                  targetStatusName = 'In Review';
+                } else if (action === 'closed' || action === 'merged') {
+                  targetStatusName = 'Done';
+                }
+              }
+              
+              if (!targetStatusName) {
+                console.log('No target status determined');
+                return;
+              }
+              
+              // Find the target status option ID
+              const targetOption = statusField.options.find(option => 
+                option.name === targetStatusName || 
+                (targetStatusName === 'To Do' && option.name === 'Todo')
+              );
+              
+              if (!targetOption) {
+                console.log(`Target status option '${targetStatusName}' not found`);
+                console.log('Available options:', statusField.options.map(o => o.name));
+                return;
+              }
+              
+              console.log(`Updating to status: ${targetOption.name} (${targetOption.id})`);
+              
+              // Update the project item status
+              const updateMutation = `
+                mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+                  updateProjectV2ItemFieldValue(input: {
+                    projectId: $projectId
+                    itemId: $itemId
+                    fieldId: $fieldId
+                    value: $value
+                  }) {
+                    projectV2Item {
+                      id
+                    }
+                  }
+                }
+              `;
+              
+              await github.graphql(updateMutation, {
+                projectId: project.id,
+                itemId: projectItem.id,
+                fieldId: statusField.id,
+                value: {
+                  singleSelectOptionId: targetOption.id
+                }
+              });
+              
+              console.log(`Successfully updated project item status to: ${targetOption.name}`);
+              
+            } catch (error) {
+              console.error('Error updating project status:', error);
+            }
