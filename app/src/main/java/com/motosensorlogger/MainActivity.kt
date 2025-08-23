@@ -10,6 +10,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.location.GnssStatus
 import android.net.Uri
 import android.os.*
 import android.view.View
@@ -55,7 +56,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     private var lastMag = floatArrayOf(0f, 0f, 0f)
     private var lastPressure = 0f
     private var lastLocation: Location? = null
-    private var satelliteCount = 0
+    
+    // GPS detailed info
+    private var satellitesInView = 0
+    private var satellitesUsed = 0
+    private var gnssCallback: GnssStatus.Callback? = null
+    private var hdop = 0.0f
+    private var vdop = 0.0f
+    private var fixTime = 0L
+    private var gpsProvider = "GPS"
     
     companion object {
         private const val PERMISSION_REQUEST_CODE = 1001
@@ -194,6 +203,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                 0f,   // 0 meters
                 this
             )
+            
+            // Register GNSS status callback for satellite info
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                gnssCallback = object : GnssStatus.Callback() {
+                    override fun onSatelliteStatusChanged(status: GnssStatus) {
+                        super.onSatelliteStatusChanged(status)
+                        satellitesInView = status.satelliteCount
+                        satellitesUsed = 0
+                        
+                        for (i in 0 until status.satelliteCount) {
+                            if (status.usedInFix(i)) {
+                                satellitesUsed++
+                            }
+                        }
+                    }
+                    
+                    override fun onStarted() {
+                        super.onStarted()
+                    }
+                    
+                    override fun onStopped() {
+                        super.onStopped()
+                        satellitesInView = 0
+                        satellitesUsed = 0
+                    }
+                    
+                    override fun onFirstFix(ttffMillis: Int) {
+                        super.onFirstFix(ttffMillis)
+                        fixTime = ttffMillis.toLong()
+                    }
+                }
+                
+                locationManager.registerGnssStatusCallback(mainExecutor, gnssCallback!!)
+            }
         }
         
         // Start UI update coroutine
@@ -211,6 +254,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         
         // Stop location updates
         locationManager.removeUpdates(this)
+        
+        // Unregister GNSS callback
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            gnssCallback?.let {
+                locationManager.unregisterGnssStatusCallback(it)
+            }
+        }
         
         // Cancel update job
         updateJob?.cancel()
@@ -250,15 +300,41 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         
         // Update GPS
         lastLocation?.let { loc ->
-            val status = if (loc.accuracy < 10) "Good" else if (loc.accuracy < 30) "Fair" else "Poor"
-            binding.tvGpsStatus.text = "Status: $status (${loc.accuracy.toInt()}m accuracy)"
+            // Calculate HDOP/VDOP approximation from accuracy
+            hdop = loc.accuracy / 5.0f // Rough approximation
+            
+            // Determine fix quality
+            val fixQuality = when {
+                loc.accuracy < 5 -> "RTK/DGPS"
+                loc.accuracy < 10 -> "Excellent"
+                loc.accuracy < 20 -> "Good"
+                loc.accuracy < 50 -> "Moderate"
+                else -> "Poor"
+            }
+            
+            // Speed in km/h
+            val speedKmh = loc.speed * 3.6f
+            
+            // Provider info
+            gpsProvider = loc.provider ?: "Unknown"
+            
+            // First line: Fix quality and technical details
+            binding.tvGpsStatus.text = String.format(
+                "Fix: %s | Accuracy: %.1fm | HDOP: %.1f | Speed: %.1f km/h",
+                fixQuality, loc.accuracy, hdop, speedKmh
+            )
+            
+            // Second line: Satellites and coordinates
             binding.tvGpsDetails.text = String.format(
-                "Lat: %.5f | Lon: %.5f | Alt: %.0fm",
-                loc.latitude, loc.longitude, loc.altitude
+                "Sats: %d/%d | Lat: %.6f° | Lon: %.6f° | Alt: %.0fm | Provider: %s",
+                satellitesUsed, satellitesInView, loc.latitude, loc.longitude, loc.altitude, gpsProvider
             )
         } ?: run {
-            binding.tvGpsStatus.text = "Status: Waiting for lock..."
-            binding.tvGpsDetails.text = "Satellites: -- | Accuracy: --"
+            binding.tvGpsStatus.text = "Status: No fix | Searching for satellites..."
+            binding.tvGpsDetails.text = String.format(
+                "Sats: %d/%d visible | Waiting for lock...",
+                satellitesUsed, satellitesInView
+            )
         }
     }
     
@@ -277,6 +353,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     
     override fun onLocationChanged(location: Location) {
         lastLocation = location
+        
+        // Extract additional GPS metrics if available
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            location.extras?.let { bundle ->
+                // Try to get satellite count from extras (provider-specific)
+                val sats = bundle.getInt("satellites", -1)
+                if (sats > 0) {
+                    satellitesUsed = sats
+                }
+            }
+        }
     }
     
     override fun onProviderEnabled(provider: String) {}

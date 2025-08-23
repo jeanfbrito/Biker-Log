@@ -114,18 +114,20 @@
                     android:id="@+id/tvGpsStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Status: Waiting for lock..."
-                    android:textSize="12sp"
-                    android:paddingStart="8dp" />
+                    android:text="Status: No fix | Searching for satellites..."
+                    android:textSize="11sp"
+                    android:paddingStart="8dp"
+                    android:typeface="monospace" />
                 
                 <TextView
                     android:id="@+id/tvGpsDetails"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Satellites: 0 | Accuracy: --"
-                    android:textSize="12sp"
+                    android:text="Sats: 0/0 | Waiting for lock..."
+                    android:textSize="11sp"
                     android:paddingStart="8dp"
-                    android:paddingBottom="8dp" />
+                    android:paddingBottom="8dp"
+                    android:typeface="monospace" />
 
                 <!-- IMU Status -->
                 <TextView
