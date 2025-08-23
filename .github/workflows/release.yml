@@ -185,7 +185,7 @@ jobs:
         cat release_notes.md
     
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ needs.build-release.outputs.version }}
         name: Release v${{ needs.build-release.outputs.version }}
