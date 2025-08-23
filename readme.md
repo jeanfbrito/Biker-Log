@@ -134,59 +134,69 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 
 ## 📲 Installation & Setup
 
-### Prerequisites
-- Java 17 or higher (check with `java -version`)
-- Android phone with USB cable
+### 🎯 Quick Install (2 Simple Options)
 
-### 📱 Setup Your Phone (One-time)
-
-1. **Enable Developer Mode:**
-   - Settings → About Phone → Tap "Build Number" 7 times
-
-2. **Enable USB Debugging:**
-   - Settings → Developer Options → Turn ON "USB Debugging"
-
-3. **Connect to Computer:**
-   - Connect via USB cable
-   - Tap "Allow" when asked about USB debugging
-   - Select "File Transfer" mode (not "Charging only")
-
-### 🚀 Install & Run
-
+#### Option A: One-Command Install
 ```bash
-# Clone the project
 git clone https://github.com/yourusername/moto-sensor-logger.git
 cd moto-sensor-logger
-
-# Install on your phone (Gradle auto-downloads everything!)
-./gradlew installDebug
-
-# Or use the shortcut script:
 ./install.sh
 ```
+The script automatically handles Java setup, Android licenses, and installation.
 
-**That's it!** Gradle automatically downloads the Android SDK, build tools, and all dependencies. No manual setup needed!
+#### Option B: Guided Setup (If Option A fails)
+```bash
+./setup.sh
+```
+This interactive script will guide you through each step.
 
-### 🖥️ Alternative: Use Android Studio
+### 📱 Prepare Your Phone First
+
+1. **Enable Developer Mode:**
+   - Go to Settings → About Phone
+   - Tap "Build Number" 7 times
+   - You'll see "You are now a developer!"
+
+2. **Enable USB Debugging:**
+   - Go to Settings → Developer Options  
+   - Turn ON "USB Debugging"
+   - Turn ON "Install via USB" (if available)
+
+3. **Connect Your Phone:**
+   - Connect to computer with USB cable
+   - Tap "Allow" on the USB debugging prompt
+   - Choose "File Transfer" mode (not "Charging only")
+
+### 🚫 Common Issues & Fixes
+
+| Problem | Solution |
+|---------|----------|
+| "Java not found" | Run: `brew install openjdk@17` (Mac) or use `./setup.sh` |
+| "No devices found" | Check USB cable, enable USB debugging, tap "Allow" on phone |
+| "License not accepted" | Already handled by our scripts automatically |
+| "Build failed" | Disconnect/reconnect phone, try `./setup.sh` |
+
+### 🖥️ Alternative: Android Studio (Easiest)
 
 1. Download [Android Studio](https://developer.android.com/studio)
-2. Open this project folder
-3. Click the green ▶️ button
+2. Open → Select this folder → Wait for sync
+3. Connect phone → Click green ▶️ button
 
-### Common Commands
+### ✅ What Our Scripts Do For You
 
-```bash
-./gradlew installDebug    # Build and install on phone
-./gradlew assembleDebug   # Just build APK
-./gradlew clean           # Clean build files
-./gradlew tasks           # See all available tasks
-```
+- **`./install.sh`** - Quick install that:
+  - Auto-detects Java location
+  - Accepts Android licenses
+  - Downloads Android SDK automatically
+  - Builds and installs the app
 
-### Troubleshooting
+- **`./setup.sh`** - Complete setup that:
+  - Installs Java if missing
+  - Sets up all Android tools
+  - Guides you through device connection
+  - Handles all error cases
 
-- **"No connected devices"**: Check USB debugging is enabled and cable is connected
-- **"Java not found"**: Install Java 17+ (`brew install openjdk@17` on Mac)
-- **Build fails**: Make sure your phone is connected before running
+No manual SDK installation needed - Gradle handles everything!
 
 ## 📈 Data Analysis Capabilities
 
