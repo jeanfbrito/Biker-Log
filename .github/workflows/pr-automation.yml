@@ -1,0 +1,90 @@
+name: PR Automation
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Labels to PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+            
+            // Extract issue numbers from PR body
+            const issueMatches = body.match(/#(\d+)/g);
+            const labels = [];
+            
+            if (issueMatches) {
+              // Add needs-qa label for code changes
+              labels.push('needs-qa');
+              
+              // Try to inherit labels from linked issues
+              for (const match of issueMatches) {
+                const issueNumber = match.replace('#', '');
+                try {
+                  const issue = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: parseInt(issueNumber)
+                  });
+                  
+                  // Copy priority labels
+                  const priorityLabel = issue.data.labels.find(l => l.name.startsWith('P'));
+                  if (priorityLabel && !labels.includes(priorityLabel.name)) {
+                    labels.push(priorityLabel.name);
+                  }
+                } catch (e) {
+                  console.log(`Could not fetch issue #${issueNumber}`);
+                }
+              }
+            }
+            
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: labels
+              });
+            }
+
+      - name: Comment PR Instructions
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const comment = `## 🔍 PR Review Checklist
+            
+            ### For AI QA Review:
+            \`\`\`
+            "Review PR #${pr.number} with the quality-assurance-engineer"
+            \`\`\`
+            
+            ### Manual Checklist:
+            - [ ] Code follows project style guide
+            - [ ] Tests are included and passing
+            - [ ] Documentation is updated
+            - [ ] No security vulnerabilities
+            - [ ] Performance impact considered
+            - [ ] Breaking changes documented
+            
+            ### Automated Checks:
+            - 🔄 Build status: Pending
+            - 🔄 Test coverage: Pending
+            - 🔄 Code quality: Pending
+            
+            ---
+            *This PR has been automatically labeled for QA review.*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: comment
+            });

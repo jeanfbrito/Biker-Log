@@ -1,0 +1,91 @@
+name: AI Agent Issue Triage
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Issue Labels
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            const labels = context.payload.issue.labels.map(l => l.name);
+            
+            // Auto-add ai-ready if it's a feature or bug without it
+            if ((labels.includes('feature') || labels.includes('bug')) && !labels.includes('ai-ready')) {
+              await github.rest.issues.addLabels({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                labels: ['ai-ready']
+              });
+            }
+            
+            // Add size label if missing
+            const hasSizeLabel = labels.some(l => l.startsWith('size-'));
+            if (!hasSizeLabel && labels.includes('ai-ready')) {
+              // Default to medium if not specified
+              await github.rest.issues.addLabels({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                labels: ['size-M']
+              });
+            }
+            
+            // Add to milestone if not assigned
+            if (!context.payload.issue.milestone && labels.includes('ai-ready')) {
+              const milestones = await github.rest.issues.listMilestones({
+                owner: issue.owner,
+                repo: issue.repo,
+                state: 'open'
+              });
+              
+              const mvp1 = milestones.data.find(m => m.title === 'MVP 1.0');
+              if (mvp1) {
+                await github.rest.issues.update({
+                  owner: issue.owner,
+                  repo: issue.repo,
+                  issue_number: issue.number,
+                  milestone: mvp1.number
+                });
+              }
+            }
+
+      - name: Comment on New Issues
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.issue;
+            const labels = context.payload.issue.labels.map(l => l.name);
+            
+            if (labels.includes('ai-ready')) {
+              const comment = `🤖 **AI Agent Ready**
+              
+              This issue has been marked as ready for AI agent processing.
+              
+              **To work on this issue with Claude:**
+              \`\`\`
+              "Work on issue #${issue.number}"
+              \`\`\`
+              
+              **Assigned Agent:** ${labels.includes('needs-qa') ? 'quality-assurance-engineer' : 'senior-feature-developer'}
+              **Priority:** ${labels.find(l => l.startsWith('P')) || 'Not set'}
+              **Size:** ${labels.find(l => l.startsWith('size-')) || 'Not set'}
+              
+              Please ensure all acceptance criteria are clearly defined before starting work.`;
+              
+              await github.rest.issues.createComment({
+                owner: issue.owner,
+                repo: issue.repo,
+                issue_number: issue.number,
+                body: comment
+              });
+            }
