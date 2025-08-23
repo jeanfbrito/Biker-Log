@@ -64,6 +64,15 @@
             </intent-filter>
         </activity>
         
+        <activity
+            android:name=".LogViewerActivity"
+            android:label="Log Viewer"
+            android:parentActivityName=".MainActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        
         <!-- High-performance sensor data collection service -->
         <service
             android:name=".services.SensorLoggerService"

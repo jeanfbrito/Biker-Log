@@ -108,7 +108,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun setupRecyclerView() {
         logFileAdapter = LogFileAdapter(
-            onItemClick = { file -> shareLogFile(file) },
+            onItemClick = { file -> viewLogFile(file) },
             onDeleteClick = { file -> confirmDeleteFile(file) }
         )
         
@@ -262,6 +262,13 @@ class MainActivity : AppCompatActivity() {
         return logDir.listFiles { file -> file.extension == "csv" }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
+    }
+    
+    private fun viewLogFile(file: File) {
+        val intent = Intent(this, LogViewerActivity::class.java).apply {
+            putExtra(LogViewerActivity.EXTRA_FILE_PATH, file.absolutePath)
+        }
+        startActivity(intent)
     }
     
     private fun shareLogFile(file: File) {
