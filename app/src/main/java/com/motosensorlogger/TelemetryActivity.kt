@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.motosensorlogger.views.GForceView
 import com.motosensorlogger.views.InclinometerView
 import com.motosensorlogger.views.BarInclinometerView
+import com.motosensorlogger.views.MotoInclinometerView
 import kotlinx.coroutines.*
 import kotlin.math.*
 
@@ -32,8 +33,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     // Custom views
     private lateinit var inclinometerView: InclinometerView
     private lateinit var barInclinometerView: BarInclinometerView
+    private lateinit var motoInclinometerView: MotoInclinometerView
     private lateinit var gForceView: GForceView
-    private var useBarInclinometer = false
+    private var inclinometerStyle = 0 // 0=classic, 1=bar, 2=moto
     
     // Buttons
     private lateinit var btnZero: Button
@@ -106,6 +108,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         // Bar inclinometer view
         barInclinometerView = BarInclinometerView(this)
         
+        // Motorcycle inclinometer view
+        motoInclinometerView = MotoInclinometerView(this)
+        
         // Initially show classic view
         inclinometerContainer.addView(inclinometerView, inclinometerParams)
         
@@ -124,6 +129,7 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             setOnClickListener {
                 inclinometerView.zeroCalibration()
                 barInclinometerView.zeroCalibration()
+                motoInclinometerView.zeroCalibration()
                 showCalibrationStatus(true)
             }
         }
@@ -143,6 +149,7 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             setOnClickListener {
                 inclinometerView.resetCalibration()
                 barInclinometerView.resetCalibration()
+                motoInclinometerView.resetCalibration()
                 showCalibrationStatus(false)
             }
         }
@@ -161,12 +168,12 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             setTextColor(Color.WHITE)
             setPadding(40, 20, 40, 20)
             setOnClickListener {
-                useBarInclinometer = !useBarInclinometer
+                inclinometerStyle = (inclinometerStyle + 1) % 3
                 inclinometerContainer.removeAllViews()
-                if (useBarInclinometer) {
-                    inclinometerContainer.addView(barInclinometerView, inclinometerParams)
-                } else {
-                    inclinometerContainer.addView(inclinometerView, inclinometerParams)
+                when (inclinometerStyle) {
+                    0 -> inclinometerContainer.addView(inclinometerView, inclinometerParams)
+                    1 -> inclinometerContainer.addView(barInclinometerView, inclinometerParams)
+                    2 -> inclinometerContainer.addView(motoInclinometerView, inclinometerParams)
                 }
             }
         }
@@ -429,15 +436,16 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     private fun updateUI() {
-        // Update both inclinometers
+        // Update all inclinometers
         inclinometerView.setAngles(pitch, roll)
         barInclinometerView.setAngles(pitch, roll)
+        motoInclinometerView.setAngles(pitch, roll)
         
         // Get display angles (after calibration) from active view
-        val displayAngles = if (useBarInclinometer) {
-            barInclinometerView.getDisplayAngles()
-        } else {
-            inclinometerView.getDisplayAngles()
+        val displayAngles = when (inclinometerStyle) {
+            1 -> barInclinometerView.getDisplayAngles()
+            2 -> motoInclinometerView.getDisplayAngles()
+            else -> inclinometerView.getDisplayAngles()
         }
         val displayPitch = displayAngles.first
         val displayRoll = displayAngles.second
