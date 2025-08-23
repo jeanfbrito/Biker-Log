@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.0)'
+        required: true
+        type: string
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DISTRIBUTION: 'temurin'
+
+jobs:
+  build-release:
+    name: Build Release APK
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/v}
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building version: $VERSION"
+    
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: ${{ env.JAVA_DISTRIBUTION }}
+        cache: gradle
+    
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    
+    - name: Decode keystore
+      if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+    
+    - name: Build release APK
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        if [ -f "release.keystore" ]; then
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
+        else
+          ./gradlew assembleRelease
+        fi
+    
+    - name: Upload release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-apk-${{ steps.get_version.outputs.version }}
+        path: app/build/outputs/apk/release/*.apk
+        retention-days: 30
+    
+    - name: Calculate checksums
+      run: |
+        cd app/build/outputs/apk/release/
+        sha256sum *.apk > checksums.txt
+        cat checksums.txt
+    
+    - name: Upload checksums
+      uses: actions/upload-artifact@v4
+      with:
+        name: checksums-${{ steps.get_version.outputs.version }}
+        path: app/build/outputs/apk/release/checksums.txt
+        retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-release
+    permissions:
+      contents: write
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: release-apk-${{ needs.build-release.outputs.version }}
+        path: ./artifacts
+    
+    - name: Download checksums
+      uses: actions/download-artifact@v4
+      with:
+        name: checksums-${{ needs.build-release.outputs.version }}
+        path: ./artifacts
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get the previous tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        
+        if [ -z "$PREV_TAG" ]; then
+          echo "No previous tag found, including all commits"
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD)
+        else
+          echo "Generating changelog from $PREV_TAG to HEAD"
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD)
+        fi
+        
+        # Save to file for multi-line output
+        echo "$CHANGELOG" > changelog.txt
+        
+        # Extract breaking changes, features, and fixes
+        echo "## What's Changed" > release_notes.md
+        echo "" >> release_notes.md
+        
+        # Breaking changes
+        if grep -q "BREAKING CHANGE\|breaking:" changelog.txt; then
+          echo "### ⚠️ Breaking Changes" >> release_notes.md
+          grep -E "BREAKING CHANGE|breaking:" changelog.txt | sed 's/^/- /' >> release_notes.md
+          echo "" >> release_notes.md
+        fi
+        
+        # Features
+        if grep -q "^- feat" changelog.txt; then
+          echo "### ✨ Features" >> release_notes.md
+          grep "^- feat" changelog.txt | sed 's/^- feat:/- /' | sed 's/^- feat(/- /' >> release_notes.md
+          echo "" >> release_notes.md
+        fi
+        
+        # Fixes
+        if grep -q "^- fix" changelog.txt; then
+          echo "### 🐛 Bug Fixes" >> release_notes.md
+          grep "^- fix" changelog.txt | sed 's/^- fix:/- /' | sed 's/^- fix(/- /' >> release_notes.md
+          echo "" >> release_notes.md
+        fi
+        
+        # Performance
+        if grep -q "^- perf" changelog.txt; then
+          echo "### ⚡ Performance" >> release_notes.md
+          grep "^- perf" changelog.txt | sed 's/^- perf:/- /' | sed 's/^- perf(/- /' >> release_notes.md
+          echo "" >> release_notes.md
+        fi
+        
+        # Other changes
+        echo "### 📝 Other Changes" >> release_notes.md
+        grep -v "^- feat\|^- fix\|^- perf\|BREAKING CHANGE\|breaking:" changelog.txt | head -20 >> release_notes.md
+        
+        echo "" >> release_notes.md
+        echo "## Installation" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "Download the APK file below and install it on your Android device." >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Requirements" >> release_notes.md
+        echo "- Android 8.0 (API 26) or higher" >> release_notes.md
+        echo "- Location and sensor permissions" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Checksums" >> release_notes.md
+        echo '```' >> release_notes.md
+        cat artifacts/checksums.txt >> release_notes.md
+        echo '```' >> release_notes.md
+        
+        cat release_notes.md
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ needs.build-release.outputs.version }}
+        name: Release v${{ needs.build-release.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ contains(needs.build-release.outputs.version, 'alpha') || contains(needs.build-release.outputs.version, 'beta') || contains(needs.build-release.outputs.version, 'rc') }}
+        files: |
+          artifacts/*.apk
+          artifacts/checksums.txt
+        fail_on_unmatched_files: true
+        generate_release_notes: true
+
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [build-release, create-release]
+    if: always()
+    
+    steps:
+    - name: Send notification
+      if: success()
+      run: |
+        echo "✅ Release v${{ needs.build-release.outputs.version }} completed successfully!"
+        echo "View release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.build-release.outputs.version }}"
+    
+    - name: Report failure
+      if: failure()
+      run: |
+        echo "❌ Release v${{ needs.build-release.outputs.version }} failed!"
+        echo "Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

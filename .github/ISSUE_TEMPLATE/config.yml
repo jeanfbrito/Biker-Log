@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/jeanfbrito/Biker-Log/discussions
+    about: For general questions, ideas, and community discussions
+  - name: 📖 Documentation
+    url: https://github.com/jeanfbrito/Biker-Log/wiki
+    about: Check our wiki for guides and documentation
+  - name: 🗺️ Roadmap
+    url: https://github.com/jeanfbrito/Biker-Log/blob/main/TASKS.md
+    about: See what's planned and in progress

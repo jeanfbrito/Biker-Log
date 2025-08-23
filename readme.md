@@ -1,5 +1,10 @@
 # Moto Sensor Logger - MVP 1.0
 
+[![Android CI](https://github.com/jeanfbrito/Biker-Log/workflows/Android%20CI/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/android-ci.yml)
+[![Security Scan](https://github.com/jeanfbrito/Biker-Log/workflows/Security%20Scan/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/security.yml)
+[![License](https://img.shields.io/github/license/jeanfbrito/Biker-Log)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/jeanfbrito/Biker-Log)](https://github.com/jeanfbrito/Biker-Log/releases/latest)
+
 > **DIY Open-Source Motorcycle Sensor Data Logger**  
 > Real-time sensor data collection and analysis for motorcycle dynamics, wheelies, jumps, and off-road performance tracking.
 
