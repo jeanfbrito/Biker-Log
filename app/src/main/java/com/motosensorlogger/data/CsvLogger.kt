@@ -29,11 +29,50 @@ class CsvLogger(private val context: Context) {
         private const val LOG_DIR = "MotoSensorLogs"
         private const val BUFFER_SIZE = 32 * 1024 // 32KB buffer for efficient writes
         
-        private val CSV_HEADER = """
-# Moto Sensor Log v1.0
-# Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}
-# Date: ${SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).format(Date())}
-# Schema: {
+        private fun buildHeader(calibrationData: Any?): String {
+            val dateStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).format(Date())
+            val deviceStr = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+            
+            // Extract calibration info if available
+            val calibrationSection = if (calibrationData != null) {
+                // Using reflection to avoid circular dependency
+                val calibClass = calibrationData.javaClass
+                val gravityField = calibClass.getDeclaredField("gravityVector")
+                val pitchField = calibClass.getDeclaredField("initialPitch") 
+                val rollField = calibClass.getDeclaredField("initialRoll")
+                val yawField = calibClass.getDeclaredField("initialYaw")
+                
+                gravityField.isAccessible = true
+                pitchField.isAccessible = true
+                rollField.isAccessible = true
+                yawField.isAccessible = true
+                
+                val gravity = gravityField.get(calibrationData) as FloatArray
+                val pitch = pitchField.get(calibrationData) as Float
+                val roll = rollField.get(calibrationData) as Float
+                val yaw = yawField.get(calibrationData) as Float
+                
+                """# Calibration: {
+#   "gravity_vector": [${gravity[0]}, ${gravity[1]}, ${gravity[2]}],
+#   "initial_pitch": $pitch,
+#   "initial_roll": $roll,
+#   "initial_yaw": $yaw,
+#   "calibration_info": "Phone mounted at pitch=${"%.1f".format(pitch)}°, roll=${"%.1f".format(roll)}°. All sensor data is relative to this mounting position."
+# }
+"""
+            } else {
+                """# Calibration: {
+#   "status": "uncalibrated",
+#   "warning": "No calibration performed. Sensor data is in device coordinates."
+# }
+"""
+            }
+            
+            return """
+# Moto Sensor Log v1.1
+# Device: $deviceStr
+# Date: $dateStr
+$calibrationSection# Schema: {
 #   "version": "1.0",
 #   "events": {
 #     "GPS": {
@@ -81,12 +120,14 @@ class CsvLogger(private val context: Context) {
 # }
 timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 """.trimIndent()
+        }
     }
     
     /**
      * Start logging session with new file
+     * @param calibrationHeader Optional calibration header to prepend
      */
-    fun startLogging(): Boolean {
+    fun startLogging(calibrationHeader: String = ""): Boolean {
         if (isLogging.get()) return false
         
         try {
@@ -104,8 +145,15 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
             // Initialize writer with large buffer
             writer = BufferedWriter(FileWriter(logFile), BUFFER_SIZE)
             
-            // Write header
-            writer?.write(CSV_HEADER)
+            // Write calibration header if provided
+            if (calibrationHeader.isNotEmpty()) {
+                writer?.write(calibrationHeader)
+                writer?.newLine()
+            }
+            
+            // Write standard header
+            val header = buildHeader(null)
+            writer?.write(header)
             writer?.newLine()
             
             // Start writer coroutine

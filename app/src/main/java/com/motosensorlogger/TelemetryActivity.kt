@@ -1,6 +1,9 @@
 package com.motosensorlogger
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.graphics.Color
 import android.graphics.Typeface
 import android.hardware.Sensor
@@ -8,12 +11,14 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.IBinder
 import android.view.MenuItem
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.motosensorlogger.services.SensorLoggerService
 import com.motosensorlogger.views.GForceView
 import com.motosensorlogger.views.InclinometerView
 import com.motosensorlogger.views.BarInclinometerView
@@ -66,6 +71,34 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     
     // Low-pass filter alpha
     private val ALPHA = 0.8f
+    
+    // Service binding
+    private var sensorService: SensorLoggerService? = null
+    private var serviceBound = false
+    
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as SensorLoggerService.LocalBinder
+            sensorService = binder.getService()
+            serviceBound = true
+            
+            // Apply calibration from service if it's recording
+            if (sensorService?.isCurrentlyLogging() == true) {
+                sensorService?.getCalibrationData()?.let { calibData ->
+                    // Apply the same calibration offsets to the telemetry views
+                    inclinometerView.setCalibrationOffsets(calibData.referencePitch, calibData.referenceRoll)
+                    barInclinometerView.setCalibrationOffsets(calibData.referencePitch, calibData.referenceRoll)
+                    motoInclinometerView.setCalibrationOffsets(calibData.referencePitch, calibData.referenceRoll)
+                    showCalibrationStatus(true)
+                }
+            }
+        }
+        
+        override fun onServiceDisconnected(name: ComponentName?) {
+            sensorService = null
+            serviceBound = false
+        }
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -398,6 +431,10 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         // Start monitoring
         startSensorMonitoring()
         startUIUpdates()
+        
+        // Bind to sensor service if it's running
+        val serviceIntent = Intent(this, SensorLoggerService::class.java)
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
     
     private fun showCalibrationStatus(calibrated: Boolean) {
@@ -539,5 +576,11 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         updateJob?.cancel()
         updateScope.cancel()
         sensorManager.unregisterListener(this)
+        
+        // Unbind from service
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
+        }
     }
 }

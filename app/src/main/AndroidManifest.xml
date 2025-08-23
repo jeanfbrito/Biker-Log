@@ -83,6 +83,16 @@
                 android:value=".MainActivity" />
         </activity>
         
+        <activity
+            android:name=".SettingsActivity"
+            android:label="Settings"
+            android:parentActivityName=".MainActivity"
+            android:screenOrientation="portrait">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".MainActivity" />
+        </activity>
+        
         <!-- High-performance sensor data collection service -->
         <service
             android:name=".services.SensorLoggerService"

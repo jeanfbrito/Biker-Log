@@ -11,4 +11,9 @@
         android:icon="@android:drawable/ic_menu_info_details"
         android:title="Telemetry" />
     
+    <item
+        android:id="@+id/navigation_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Settings" />
+    
 </menu>

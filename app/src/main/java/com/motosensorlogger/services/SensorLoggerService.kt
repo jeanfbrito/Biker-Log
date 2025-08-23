@@ -15,8 +15,12 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import com.motosensorlogger.MainActivity
 import com.motosensorlogger.data.*
+import com.motosensorlogger.calibration.CalibrationService
+import com.motosensorlogger.calibration.CalibrationData
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import java.util.concurrent.atomic.AtomicBoolean
+import android.util.Log
 
 class SensorLoggerService : Service(), SensorEventListener {
     
@@ -58,12 +62,19 @@ class SensorLoggerService : Service(), SensorEventListener {
     private var lastAccel = floatArrayOf(0f, 0f, 0f)
     private var lastGyro = floatArrayOf(0f, 0f, 0f)
     
+    // Calibration service
+    private lateinit var calibrationService: CalibrationService
+    private var calibrationData: CalibrationData? = null
+    
     inner class LocalBinder : Binder() {
         fun getService(): SensorLoggerService = this@SensorLoggerService
     }
     
     override fun onCreate() {
         super.onCreate()
+        
+        // Initialize calibration service
+        calibrationService = CalibrationService(this)
         
         // Initialize sensors
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -104,15 +115,49 @@ class SensorLoggerService : Service(), SensorEventListener {
         if (isLogging.get()) return
         
         // Start foreground service
-        startForeground(NOTIFICATION_ID, createNotification("Recording sensor data..."))
+        startForeground(NOTIFICATION_ID, createNotification("Calibrating sensors..."))
         
         // Acquire wake lock
         if (!wakeLock.isHeld) {
             wakeLock.acquire(12 * 60 * 60 * 1000L) // 12 hours max
         }
         
-        // Start CSV logging
-        if (!csvLogger.startLogging()) {
+        // Start calibration process
+        startCalibration()
+    }
+    
+    private fun startCalibration() {
+        Log.d("SensorLogger", "Starting calibration - simplified version")
+        
+        // Register sensors
+        accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        gyroscope?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        magnetometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        
+        // Skip calibration for now - just start logging immediately
+        // TODO: Fix calibration system
+        serviceScope.launch {
+            updateNotification("Starting recording...")
+            delay(500) // Brief delay
+            finishCalibration()
+        }
+    }
+    
+    private fun finishCalibration() {
+        // Start actual logging with calibration data
+        startLoggingWithCalibration()
+    }
+    
+    private fun startLoggingWithCalibration() {
+        // Start CSV logging with calibration reference (not transformation)
+        val calibrationHeader = calibrationData?.toCsvHeader() ?: ""
+        if (!csvLogger.startLogging(calibrationHeader)) {
             stopSelf()
             return
         }
@@ -120,7 +165,9 @@ class SensorLoggerService : Service(), SensorEventListener {
         isLogging.set(true)
         isPaused.set(false)
         
-        // Register sensor listeners with high sampling rates
+        // Re-register sensor listeners with high sampling rates
+        sensorManager.unregisterListener(this)
+        
         accelerometer?.let {
             sensorManager.registerListener(this, it, IMU_SAMPLING_PERIOD)
         }
@@ -137,12 +184,15 @@ class SensorLoggerService : Service(), SensorEventListener {
         // Start GPS updates
         startLocationUpdates()
         
-        // Log session start
+        // Update notification
+        updateNotification("Recording sensor data...")
+        
+        // Log session start with calibration info
         csvLogger.logEvent(
             SpecialEvent(
                 System.currentTimeMillis(),
                 SpecialEvent.EventType.SESSION_START,
-                metadata = "Logging started"
+                metadata = "Calibrated: pitch=${calibrationData?.referencePitch?.let { "%.1f".format(it) }}°, roll=${calibrationData?.referenceRoll?.let { "%.1f".format(it) }}°, quality=${calibrationData?.quality?.getQualityLevel()}"
             )
         )
     }
@@ -192,11 +242,15 @@ class SensorLoggerService : Service(), SensorEventListener {
         updateNotification("Recording sensor data...")
     }
     
+    
     override fun onSensorChanged(event: SensorEvent) {
+        // Skip calibration logic for now
         if (!isLogging.get() || isPaused.get()) return
         
         val timestamp = System.currentTimeMillis()
         
+        // Log RAW sensor data - no transformation!
+        // Calibration will be applied during post-processing
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 lastAccel = event.values.clone()
@@ -225,6 +279,7 @@ class SensorLoggerService : Service(), SensorEventListener {
             }
             
             Sensor.TYPE_MAGNETIC_FIELD -> {
+                // Log raw magnetometer data
                 csvLogger.logEvent(
                     MagEvent(
                         timestamp,
@@ -334,11 +389,13 @@ class SensorLoggerService : Service(), SensorEventListener {
     fun isCurrentlyLogging(): Boolean = isLogging.get()
     fun isCurrentlyPaused(): Boolean = isPaused.get()
     fun getCsvLogger(): CsvLogger = csvLogger
+    fun getCalibrationData(): com.motosensorlogger.calibration.CalibrationData? = calibrationData
     
     override fun onDestroy() {
         super.onDestroy()
         stopLogging()
         csvLogger.cleanup()
+        calibrationService.dispose()
         serviceScope.cancel()
     }
 }

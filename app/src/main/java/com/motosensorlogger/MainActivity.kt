@@ -13,6 +13,7 @@ import android.location.LocationManager
 import android.location.GnssStatus
 import android.net.Uri
 import android.os.*
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -168,6 +169,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                     val intent = Intent(this, TelemetryActivity::class.java)
                     startActivity(intent)
                     // Don't keep telemetry selected when returning
+                    false
+                }
+                R.id.navigation_settings -> {
+                    // Launch settings activity
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    startActivity(intent)
+                    // Don't keep settings selected when returning
                     false
                 }
                 else -> false
@@ -461,8 +469,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             startService(serviceIntent)
         }
         
+        // Bind to service
         bindToService()
-        updateUI()
+        
+        // Update UI immediately to show "starting" state
+        binding.btnStartStop.text = "Stop Recording"
+        binding.btnStartStop.setBackgroundColor(
+            ContextCompat.getColor(this, android.R.color.holo_red_dark)
+        )
+        binding.tvStatus.text = "Status: Recording"
+        binding.btnPauseResume.isEnabled = true
         
         Toast.makeText(this, "Logging started", Toast.LENGTH_SHORT).show()
     }
@@ -471,11 +487,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         val serviceIntent = Intent(this, SensorLoggerService::class.java).apply {
             action = SensorLoggerService.ACTION_STOP_LOGGING
         }
-        startService(serviceIntent)
+        startService(serviceIntent) // This sends the STOP action to the service
         
-        unbindFromService()
-        updateUI()
-        refreshLogsList()
+        // Update UI immediately
+        binding.btnStartStop.text = "Start Recording"
+        binding.btnStartStop.setBackgroundColor(
+            ContextCompat.getColor(this, android.R.color.holo_green_dark)
+        )
+        binding.tvStatus.text = "Status: Idle"
+        binding.btnPauseResume.isEnabled = false
+        binding.btnPauseResume.text = "Pause"
+        
+        // Unbind and refresh list after a delay
+        Handler(Looper.getMainLooper()).postDelayed({
+            unbindFromService()
+            refreshLogsList()
+        }, 200)
         
         Toast.makeText(this, "Logging stopped", Toast.LENGTH_SHORT).show()
     }
@@ -485,7 +512,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             action = SensorLoggerService.ACTION_PAUSE_LOGGING
         }
         startService(serviceIntent)
-        updateUI()
+        
+        // Update UI immediately
+        binding.btnPauseResume.text = "Resume"
+        binding.tvStatus.text = "Status: Paused"
         
         Toast.makeText(this, "Logging paused", Toast.LENGTH_SHORT).show()
     }
@@ -495,7 +525,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             action = SensorLoggerService.ACTION_RESUME_LOGGING
         }
         startService(serviceIntent)
-        updateUI()
+        
+        // Update UI immediately
+        binding.btnPauseResume.text = "Pause"
+        binding.tvStatus.text = "Status: Recording"
         
         Toast.makeText(this, "Logging resumed", Toast.LENGTH_SHORT).show()
     }
@@ -538,6 +571,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     
     private fun refreshLogsList() {
         val logFiles = getLogFiles()
+        Log.d("MainActivity", "Found ${logFiles.size} log files")
         logFileAdapter.updateFiles(logFiles)
         
         binding.tvLogsCount.text = "Log Files: ${logFiles.size}"
