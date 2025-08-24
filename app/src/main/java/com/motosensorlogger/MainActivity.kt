@@ -277,6 +277,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                     }
                 }
                 
+                // Register GNSS callback (requires API 30+)
                 locationManager.registerGnssStatusCallback(mainExecutor, gnssCallback!!)
             }
         }
