@@ -7,14 +7,14 @@ plugins {
 allprojects {
     configurations.all {
         resolutionStrategy {
-            // Force specific versions to avoid conflicts
-            force("org.bouncycastle:bcprov-jdk18on:1.79")
-            
             // Cache dynamic versions for 10 minutes
             cacheDynamicVersionsFor(10, "minutes")
             // Cache changing modules for 10 minutes
             cacheChangingModulesFor(10, "minutes")
         }
+        
+        // Exclude bouncycastle as we don't use it directly
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
     }
 }
 
