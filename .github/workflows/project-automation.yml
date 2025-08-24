@@ -19,7 +19,7 @@ jobs:
     
     steps:
       - name: Add item to project
-        uses: actions/add-to-project@v0.5.0
+        uses: actions/add-to-project@v1.0.2
         if: github.event_name == 'issues' || github.event_name == 'pull_request'
         continue-on-error: true
         with:
