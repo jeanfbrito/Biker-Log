@@ -48,7 +48,7 @@ jobs:
   unit-test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
     - name: Checkout code
@@ -67,7 +67,7 @@ jobs:
       run: chmod +x gradlew
     
     - name: Run unit tests
-      run: ./gradlew testDebugUnitTest --stacktrace
+      run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
     
     - name: Generate test report
       uses: dorny/test-reporter@v1
