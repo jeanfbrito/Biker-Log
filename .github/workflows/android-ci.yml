@@ -37,11 +37,22 @@ jobs:
         distribution: ${{ env.JAVA_DISTRIBUTION }}
         cache: gradle
     
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          ~/.android/build-cache
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
     - name: Run Android Lint
-      run: ./gradlew lint
+      run: ./gradlew lint --build-cache --parallel
     
     - name: Upload lint results
       if: always()
@@ -69,11 +80,22 @@ jobs:
         distribution: ${{ env.JAVA_DISTRIBUTION }}
         cache: gradle
     
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          ~/.android/build-cache
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
     - name: Run unit tests
-      run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
+      run: ./gradlew testDebugUnitTest --build-cache --parallel --stacktrace --no-daemon
     
     - name: Generate test report
       uses: dorny/test-reporter@v1
@@ -121,11 +143,32 @@ jobs:
         distribution: ${{ env.JAVA_DISTRIBUTION }}
         cache: gradle
     
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          ~/.android/build-cache
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+    
+    - name: Cache build outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          app/build
+          build
+        key: ${{ runner.os }}-build-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-build-
+    
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
     - name: Build debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      run: ./gradlew assembleDebug --build-cache --parallel --stacktrace
     
     - name: Upload debug APK
       uses: actions/upload-artifact@v4
@@ -135,7 +178,7 @@ jobs:
         retention-days: 7
     
     - name: Build release APK
-      run: ./gradlew assembleRelease --stacktrace
+      run: ./gradlew assembleRelease --build-cache --parallel --stacktrace
     
     - name: Upload release APK
       uses: actions/upload-artifact@v4
