@@ -1,9 +1,13 @@
 # Moto Sensor Logger - MVP 1.0
 
 [![Android CI](https://github.com/jeanfbrito/Biker-Log/workflows/Android%20CI/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/android-ci.yml)
+[![Code Quality](https://github.com/jeanfbrito/Biker-Log/workflows/Code%20Quality/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/code-quality.yml)
 [![Security Scan](https://github.com/jeanfbrito/Biker-Log/workflows/Security%20Scan/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/security.yml)
+[![Release](https://github.com/jeanfbrito/Biker-Log/workflows/Release/badge.svg)](https://github.com/jeanfbrito/Biker-Log/actions/workflows/release.yml)
 [![License](https://img.shields.io/github/license/jeanfbrito/Biker-Log)](LICENSE)
 [![Latest Release](https://img.shields.io/github/v/release/jeanfbrito/Biker-Log)](https://github.com/jeanfbrito/Biker-Log/releases/latest)
+[![API](https://img.shields.io/badge/API-30%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=30)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-blue.svg?style=flat)](https://kotlinlang.org)
 
 > **DIY Open-Source Motorcycle Sensor Data Logger**  
 > Real-time sensor data collection and analysis for motorcycle dynamics, wheelies, jumps, and off-road performance tracking.

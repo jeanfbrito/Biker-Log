@@ -13,7 +13,7 @@ enum class SensorType(val code: String) {
     BARO("BARO"),
     MAG("MAG"),
     BATTERY("BATT"),
-    EVENT("EVENT")
+    EVENT("EVENT"),
 }
 
 /**
@@ -22,7 +22,9 @@ enum class SensorType(val code: String) {
 sealed class SensorEvent {
     abstract val timestamp: Long
     abstract val sensorType: SensorType
+
     abstract fun toCsvRow(): String
+
     abstract fun toByteArray(): ByteArray
 }
 
@@ -36,13 +38,12 @@ data class GpsEvent(
     val altitude: Double,
     val speed: Float,
     val bearing: Float,
-    val accuracy: Float
+    val accuracy: Float,
 ) : SensorEvent() {
     override val sensorType = SensorType.GPS
-    
-    override fun toCsvRow(): String = 
-        "$timestamp,${sensorType.code},$latitude,$longitude,$altitude,$speed,$bearing,$accuracy"
-    
+
+    override fun toCsvRow(): String = "$timestamp,${sensorType.code},$latitude,$longitude,$altitude,$speed,$bearing,$accuracy"
+
     override fun toByteArray(): ByteArray {
         val buffer = ByteBuffer.allocate(44) // 8 + 8 + 8 + 8 + 4 + 4 + 4
         buffer.putLong(timestamp)
@@ -67,13 +68,12 @@ data class ImuEvent(
     val accelZ: Float,
     val gyroX: Float,
     val gyroY: Float,
-    val gyroZ: Float
+    val gyroZ: Float,
 ) : SensorEvent() {
     override val sensorType = SensorType.IMU
-    
-    override fun toCsvRow(): String = 
-        "$timestamp,${sensorType.code},$accelX,$accelY,$accelZ,$gyroX,$gyroY,$gyroZ"
-    
+
+    override fun toCsvRow(): String = "$timestamp,${sensorType.code},$accelX,$accelY,$accelZ,$gyroX,$gyroY,$gyroZ"
+
     override fun toByteArray(): ByteArray {
         val buffer = ByteBuffer.allocate(32) // 8 + 6*4
         buffer.putLong(timestamp)
@@ -93,13 +93,12 @@ data class ImuEvent(
 data class BaroEvent(
     override val timestamp: Long,
     val altitudeBaro: Float,
-    val pressure: Float
+    val pressure: Float,
 ) : SensorEvent() {
     override val sensorType = SensorType.BARO
-    
-    override fun toCsvRow(): String = 
-        "$timestamp,${sensorType.code},$altitudeBaro,$pressure,,,,"
-    
+
+    override fun toCsvRow(): String = "$timestamp,${sensorType.code},$altitudeBaro,$pressure,,,,"
+
     override fun toByteArray(): ByteArray {
         val buffer = ByteBuffer.allocate(16) // 8 + 4 + 4
         buffer.putLong(timestamp)
@@ -116,13 +115,12 @@ data class MagEvent(
     override val timestamp: Long,
     val magX: Float,
     val magY: Float,
-    val magZ: Float
+    val magZ: Float,
 ) : SensorEvent() {
     override val sensorType = SensorType.MAG
-    
-    override fun toCsvRow(): String = 
-        "$timestamp,${sensorType.code},$magX,$magY,$magZ,,,"
-    
+
+    override fun toCsvRow(): String = "$timestamp,${sensorType.code},$magX,$magY,$magZ,,,"
+
     override fun toByteArray(): ByteArray {
         val buffer = ByteBuffer.allocate(20) // 8 + 3*4
         buffer.putLong(timestamp)
@@ -141,10 +139,10 @@ data class SpecialEvent(
     val eventType: EventType,
     val duration: Long = 0,
     val maxValue: Float = 0f,
-    val metadata: String = ""
+    val metadata: String = "",
 ) : SensorEvent() {
     override val sensorType = SensorType.EVENT
-    
+
     enum class EventType {
         WHEELIE_START,
         WHEELIE_END,
@@ -154,12 +152,11 @@ data class SpecialEvent(
         HARD_BRAKING,
         HARD_ACCELERATION,
         SESSION_START,
-        SESSION_END
+        SESSION_END,
     }
-    
-    override fun toCsvRow(): String = 
-        "$timestamp,${sensorType.code},${eventType.name},$duration,$maxValue,\"$metadata\",,"
-    
+
+    override fun toCsvRow(): String = "$timestamp,${sensorType.code},${eventType.name},$duration,$maxValue,\"$metadata\",,"
+
     override fun toByteArray(): ByteArray {
         val metaBytes = metadata.toByteArray()
         val buffer = ByteBuffer.allocate(24 + metaBytes.size)
@@ -178,26 +175,28 @@ data class SpecialEvent(
  */
 class SensorEventBuffer(capacity: Int = 10000) {
     private val buffer = arrayOfNulls<SensorEvent>(capacity)
+
     @Volatile private var writeIndex = 0
+
     @Volatile private var readIndex = 0
-    
+
     fun write(event: SensorEvent): Boolean {
         val nextWrite = (writeIndex + 1) % buffer.size
         if (nextWrite == readIndex) return false // Buffer full
-        
+
         buffer[writeIndex] = event
         writeIndex = nextWrite
         return true
     }
-    
+
     fun read(): SensorEvent? {
         if (readIndex == writeIndex) return null // Buffer empty
-        
+
         val event = buffer[readIndex]
         readIndex = (readIndex + 1) % buffer.size
         return event
     }
-    
+
     fun size(): Int {
         val write = writeIndex
         val read = readIndex
@@ -207,7 +206,7 @@ class SensorEventBuffer(capacity: Int = 10000) {
             buffer.size - read + write
         }
     }
-    
+
     fun clear() {
         readIndex = 0
         writeIndex = 0
