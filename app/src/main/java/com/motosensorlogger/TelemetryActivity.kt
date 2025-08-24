@@ -591,28 +591,25 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                // Apply advanced filtering to accelerometer data
-                val filteredValues = telemetryFilter.filter(
-                    event.values[0],
-                    event.values[1], 
-                    event.values[2],
-                    event.sensor.type
-                )
+                // For telemetry display, we don't filter accelerometer alone
+                // We need both accel and gyro for proper IMU filtering
+                // So we'll use raw values here and rely on the low-pass filter below
+                val rawValues = event.values
                 
-                // Apply low-pass filter to isolate gravity (on filtered values)
-                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * filteredValues[0]
-                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * filteredValues[1]
-                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * filteredValues[2]
+                // Apply low-pass filter to isolate gravity (on raw values)
+                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * rawValues[0]
+                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * rawValues[1]
+                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * rawValues[2]
 
                 // Remove gravity to get linear acceleration
-                linearAcceleration[0] = filteredValues[0] - gravity[0]
-                linearAcceleration[1] = filteredValues[1] - gravity[1]
-                linearAcceleration[2] = filteredValues[2] - gravity[2]
+                linearAcceleration[0] = rawValues[0] - gravity[0]
+                linearAcceleration[1] = rawValues[1] - gravity[1]
+                linearAcceleration[2] = rawValues[2] - gravity[2]
 
                 // Convert to G-force (divide by 9.81)
                 gForceX = linearAcceleration[0] / 9.81f
                 gForceY = linearAcceleration[1] / 9.81f
-                gForceZ = filteredValues[2] / 9.81f // Use filtered Z for vertical G including gravity
+                gForceZ = rawValues[2] / 9.81f // Use raw Z for vertical G including gravity
 
                 // Calculate pitch and roll from gravity vector
                 // Pitch: rotation around X axis (forward/backward tilt)
