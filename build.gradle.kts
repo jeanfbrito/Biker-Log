@@ -12,9 +12,6 @@ allprojects {
             // Cache changing modules for 10 minutes
             cacheChangingModulesFor(10, "minutes")
         }
-        
-        // Exclude bouncycastle as we don't use it directly
-        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
     }
 }
 

@@ -55,10 +55,6 @@ jobs:
       run: rm -rf ~/.gradle/caches/jars-9/
       continue-on-error: true
     
-    - name: Clear corrupted jars
-      run: rm -rf ~/.gradle/caches/jars-9/
-      continue-on-error: true
-    
     - name: Run Android Lint
       run: ./gradlew lint --build-cache --parallel
     
@@ -101,10 +97,6 @@ jobs:
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clear corrupted jars
-      run: rm -rf ~/.gradle/caches/jars-9/
-      continue-on-error: true
     
     - name: Clear corrupted jars
       run: rm -rf ~/.gradle/caches/jars-9/
@@ -183,10 +175,6 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     
-    - name: Clear corrupted jars
-      run: rm -rf ~/.gradle/caches/jars-9/
-      continue-on-error: true
-    
     - name: Build debug APK
       run: ./gradlew assembleDebug --build-cache --parallel --stacktrace
     
@@ -228,10 +216,6 @@ jobs:
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clear corrupted jars
-      run: rm -rf ~/.gradle/caches/jars-9/
-      continue-on-error: true
     
     - name: Check for hardcoded secrets
       uses: trufflesecurity/trufflehog@main
