@@ -73,6 +73,10 @@ class SensorLoggerService : Service(), SensorEventListener {
     // Calibration service
     private lateinit var calibrationService: CalibrationService
     private var calibrationData: CalibrationData? = null
+    
+    // Sensor data filter for noise reduction
+    private lateinit var sensorFilter: SensorDataFilter
+    private var enableFiltering: Boolean = true // TODO: Make this configurable in settings
 
     inner class LocalBinder : Binder() {
         fun getService(): SensorLoggerService = this@SensorLoggerService
@@ -102,6 +106,14 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         // Initialize CSV logger
         csvLogger = CsvLogger(this)
+        
+        // Initialize sensor data filter with optimized parameters for motorcycle data
+        sensorFilter = SensorDataFilter(
+            windowSize = 5, // 5-sample moving average for good noise reduction without too much lag
+            outlierSigmaThreshold = 3.0f, // 3-sigma rule for outlier detection
+            enableOutlierDetection = true,
+            enableMovingAverage = true
+        )
 
         // Acquire wake lock for continuous operation
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -293,6 +305,10 @@ class SensorLoggerService : Service(), SensorEventListener {
         isLogging.set(true)
         isPaused.set(false)
         updateServiceState()
+        
+        // Reset sensor filter for new session to ensure clean state
+        sensorFilter.reset()
+        Log.d("SensorLogger", "Sensor filter reset for new logging session")
 
         // Re-register sensor listeners with user-configured sampling rates
         sensorManager.unregisterListener(this)
@@ -424,31 +440,19 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         val timestamp = System.currentTimeMillis()
 
-        // Log RAW sensor data - no transformation!
-        // Calibration will be applied during post-processing
+        // Process sensor data with optional filtering
+        // Raw data is preserved for calibration; filtered data is logged for better quality
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
                 lastAccel = event.values.clone()
-                // Combine with gyro if available for IMU event
-                if (lastGyro[0] != 0f || lastGyro[1] != 0f || lastGyro[2] != 0f) {
-                    csvLogger.logEvent(
-                        ImuEvent(
-                            timestamp,
-                            lastAccel[0],
-                            lastAccel[1],
-                            lastAccel[2],
-                            lastGyro[0],
-                            lastGyro[1],
-                            lastGyro[2],
-                        ),
-                    )
-                }
+                // Process IMU data when both accel and gyro are available
+                processImuData(timestamp)
             }
 
             Sensor.TYPE_GYROSCOPE -> {
                 lastGyro = event.values.clone()
                 
-                // Calculate gyro magnitude for cornering detection
+                // Calculate gyro magnitude for cornering detection (using raw data)
                 lastGyroMagnitude = kotlin.math.sqrt(
                     lastGyro[0] * lastGyro[0] + 
                     lastGyro[1] * lastGyro[1] + 
@@ -458,18 +462,8 @@ class SensorLoggerService : Service(), SensorEventListener {
                 // Check if we should switch GPS rate based on cornering
                 checkAdaptiveGpsRate()
                 
-                // Combine with accel for IMU event
-                csvLogger.logEvent(
-                    ImuEvent(
-                        timestamp,
-                        lastAccel[0],
-                        lastAccel[1],
-                        lastAccel[2],
-                        lastGyro[0],
-                        lastGyro[1],
-                        lastGyro[2],
-                    ),
-                )
+                // Process IMU data when both accel and gyro are available
+                processImuData(timestamp)
             }
 
             Sensor.TYPE_MAGNETIC_FIELD -> {
@@ -553,6 +547,62 @@ class SensorLoggerService : Service(), SensorEventListener {
                 }
             }
         }
+    
+    /**
+     * Process IMU data with optional filtering and log to CSV.
+     * Only logs when both accelerometer and gyroscope data are available.
+     */
+    private fun processImuData(timestamp: Long) {
+        // Only process if we have both accel and gyro data
+        if (lastAccel.all { it == 0f } || lastGyro.all { it == 0f }) {
+            return
+        }
+        
+        val (finalAccelX, finalAccelY, finalAccelZ, finalGyroX, finalGyroY, finalGyroZ) = if (enableFiltering) {
+            // Apply sensor filtering for noise reduction
+            val filteredData = sensorFilter.filterImuData(
+                lastAccel[0], lastAccel[1], lastAccel[2],
+                lastGyro[0], lastGyro[1], lastGyro[2]
+            )
+            
+            // Log outlier detection for debugging if needed
+            if (filteredData.outlierFlags.hasOutliers()) {
+                Log.v("SensorFilter", "Outliers detected: ${filteredData.outlierFlags}")
+            }
+            
+            Tuple6(
+                filteredData.accelX, filteredData.accelY, filteredData.accelZ,
+                filteredData.gyroX, filteredData.gyroY, filteredData.gyroZ
+            )
+        } else {
+            // Use raw sensor data without filtering
+            Tuple6(
+                lastAccel[0], lastAccel[1], lastAccel[2],
+                lastGyro[0], lastGyro[1], lastGyro[2]
+            )
+        }
+        
+        // Log the processed IMU event
+        csvLogger.logEvent(
+            ImuEvent(
+                timestamp,
+                finalAccelX,
+                finalAccelY,
+                finalAccelZ,
+                finalGyroX,
+                finalGyroY,
+                finalGyroZ,
+            ),
+        )
+    }
+    
+    /**
+     * Data class to hold 6 float values (helper for IMU data)
+     */
+    private data class Tuple6(
+        val v1: Float, val v2: Float, val v3: Float,
+        val v4: Float, val v5: Float, val v6: Float
+    )
     
     private fun checkAdaptiveGpsRate() {
         val isCornering = lastGyroMagnitude > CORNERING_THRESHOLD_RAD_S
