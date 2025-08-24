@@ -11,12 +11,12 @@ permissions:
   issues: write
   pull-requests: write
   repository-projects: write
-  projects: write
 
 jobs:
   update_project_board:
     runs-on: ubuntu-latest
     if: github.repository == 'jeanfbrito/Biker-Log'
+    continue-on-error: true
     
     steps:
       - name: Add item to project
@@ -90,6 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'jeanfbrito/Biker-Log'
     needs: update_project_board
+    continue-on-error: true
     
     steps:
       - name: Update project item status
