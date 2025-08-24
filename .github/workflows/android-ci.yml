@@ -225,6 +225,7 @@ jobs:
           const owner = context.repo.owner;
           const repo = context.repo.repo;
           const issue_number = context.issue.number;
+          const run_id = context.runId;
           
           // Get job results from needs context
           const needs = ${{ toJson(needs) }};
@@ -240,6 +241,39 @@ jobs:
             }
           };
           
+          // Get artifacts if build succeeded
+          let artifactsSection = '';
+          if (needs.build?.result === 'success') {
+            try {
+              const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner,
+                repo,
+                run_id,
+              });
+              
+              const apkArtifacts = artifacts.artifacts.filter(a => a.name.includes('apk'));
+              
+              if (apkArtifacts.length > 0) {
+                artifactsSection = `
+          
+          ### 📱 APK Downloads
+          
+          `;
+                for (const artifact of apkArtifacts) {
+                  const sizeMB = (artifact.size_in_bytes / 1048576).toFixed(1);
+                  const downloadUrl = `https://github.com/${owner}/${repo}/actions/runs/${run_id}/artifacts/${artifact.id}`;
+                  artifactsSection += `- **[${artifact.name}](${downloadUrl})** (${sizeMB} MB)\n`;
+                }
+                artifactsSection += `
+          
+          > 📌 Note: You must be logged in to GitHub to download artifacts
+          `;
+              }
+            } catch (error) {
+              console.log('Error fetching artifacts:', error.message);
+            }
+          }
+          
           // Build comment body
           const body = `## CI Results
           
@@ -248,6 +282,7 @@ jobs:
           | Lint | ${getIcon(needs.lint?.result || 'pending')} |
           | Build | ${getIcon(needs.build?.result || 'pending')} |
           | Code Analysis | ${getIcon(needs.analyze?.result || 'pending')} |
+          ${artifactsSection}
           
           [View full CI logs](${context.payload.pull_request.html_url}/checks)
           
