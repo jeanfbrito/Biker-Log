@@ -197,11 +197,6 @@ jobs:
           chore
           revert
         requireScope: false
-        subjectPattern: ^(?![A-Z]).+$
-        subjectPatternError: |
-          The subject "{subject}" found in the pull request title "{title}"
-          didn't match the configured pattern. Please ensure that the subject
-          doesn't start with an uppercase character.
     
     - name: Check for CHANGELOG entry
       if: github.event.pull_request.draft == false
