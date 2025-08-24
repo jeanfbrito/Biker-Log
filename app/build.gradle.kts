@@ -24,6 +24,17 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Use a consistent debug keystore for all builds
+            // This allows CI builds to update existing installations
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -42,6 +53,7 @@ android {
         debug {
             isMinifyEnabled = false
             isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

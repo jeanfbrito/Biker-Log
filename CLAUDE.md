@@ -41,10 +41,20 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew testDebugUnitTest --tests "*Cal
 
 ### Linting and Code Quality
 ```bash
-# No explicit lint command configured - Android lint runs during build
-# To check for build issues:
+# IMPORTANT: Always run lint locally before committing!
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew lint
+
+# Full build with all checks
 JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew build
+
+# Quick lint check (faster)
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew lintDebug
 ```
+
+**Pre-commit checklist:**
+1. ✅ Run lint: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew lint`
+2. ✅ Run tests: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew test`
+3. ✅ Verify build: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleDebug`
 
 ## Architecture Overview
 

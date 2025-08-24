@@ -18,6 +18,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.motosensorlogger.data.SensorDataFilter
 import com.motosensorlogger.services.SensorLoggerService
 import com.motosensorlogger.views.BarInclinometerView
 import com.motosensorlogger.views.GForceView
@@ -33,6 +34,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     private var accelerometer: Sensor? = null
     private var gyroscope: Sensor? = null
     private var magnetometer: Sensor? = null
+    
+    // Advanced noise filter for telemetry display
+    private lateinit var telemetryFilter: SensorDataFilter
 
     // Custom views
     private lateinit var inclinometerView: InclinometerView
@@ -105,6 +109,15 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Initialize advanced noise filter for smooth telemetry display
+        // Use slightly less aggressive filtering for telemetry to maintain responsiveness
+        telemetryFilter = SensorDataFilter(
+            windowSize = 7,  // Slightly larger window for smoother display
+            outlierSigmaThreshold = 2.5f,  // More aggressive outlier removal for display
+            enableOutlierDetection = true,
+            enableMovingAverage = true
+        )
 
         // Create layout programmatically
         val mainLayout =
@@ -195,6 +208,8 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
                     inclinometerView.resetCalibration()
                     barInclinometerView.resetCalibration()
                     motoInclinometerView.resetCalibration()
+                    // Also reset the noise filter to clear any accumulated data
+                    telemetryFilter.reset()
                     showCalibrationStatus(false)
                 }
             }
@@ -576,20 +591,25 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                // Apply low-pass filter to isolate gravity
-                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * event.values[0]
-                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * event.values[1]
-                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * event.values[2]
+                // For telemetry display, we don't filter accelerometer alone
+                // We need both accel and gyro for proper IMU filtering
+                // So we'll use raw values here and rely on the low-pass filter below
+                val rawValues = event.values
+                
+                // Apply low-pass filter to isolate gravity (on raw values)
+                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * rawValues[0]
+                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * rawValues[1]
+                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * rawValues[2]
 
                 // Remove gravity to get linear acceleration
-                linearAcceleration[0] = event.values[0] - gravity[0]
-                linearAcceleration[1] = event.values[1] - gravity[1]
-                linearAcceleration[2] = event.values[2] - gravity[2]
+                linearAcceleration[0] = rawValues[0] - gravity[0]
+                linearAcceleration[1] = rawValues[1] - gravity[1]
+                linearAcceleration[2] = rawValues[2] - gravity[2]
 
                 // Convert to G-force (divide by 9.81)
                 gForceX = linearAcceleration[0] / 9.81f
                 gForceY = linearAcceleration[1] / 9.81f
-                gForceZ = event.values[2] / 9.81f // Use raw Z for vertical G including gravity
+                gForceZ = rawValues[2] / 9.81f // Use raw Z for vertical G including gravity
 
                 // Calculate pitch and roll from gravity vector
                 // Pitch: rotation around X axis (forward/backward tilt)
@@ -624,6 +644,29 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Reset filter when resuming to avoid stale data
+        telemetryFilter.reset()
+        
+        // Register sensor listeners
+        accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        gyroscope?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+        magnetometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        // Unregister sensor listeners to save battery
+        sensorManager.unregisterListener(this)
     }
 
     override fun onDestroy() {

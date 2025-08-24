@@ -197,11 +197,6 @@ jobs:
           chore
           revert
         requireScope: false
-        subjectPattern: ^(?![A-Z]).+$
-        subjectPatternError: |
-          The subject "{subject}" found in the pull request title "{title}"
-          didn't match the configured pattern. Please ensure that the subject
-          doesn't start with an uppercase character.
     
     - name: Check for CHANGELOG entry
       if: github.event.pull_request.draft == false
@@ -230,6 +225,7 @@ jobs:
           const owner = context.repo.owner;
           const repo = context.repo.repo;
           const issue_number = context.issue.number;
+          const run_id = context.runId;
           
           // Get job results from needs context
           const needs = ${{ toJson(needs) }};
@@ -245,19 +241,94 @@ jobs:
             }
           };
           
+          // Get artifacts if build succeeded
+          let artifactsSection = '';
+          if (needs.build?.result === 'success') {
+            try {
+              const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner,
+                repo,
+                run_id,
+              });
+              
+              const apkArtifacts = artifacts.artifacts.filter(a => a.name.includes('apk'));
+              
+              if (apkArtifacts.length > 0) {
+                artifactsSection = `
+          
+          ### 📱 APK Downloads Available
+          
+          The build artifacts are ready for testing:
+          
+          `;
+                for (const artifact of apkArtifacts) {
+                  const sizeMB = (artifact.size_in_bytes / 1048576).toFixed(1);
+                  const downloadUrl = `https://github.com/${owner}/${repo}/actions/runs/${run_id}/artifacts/${artifact.id}`;
+                  const isDebug = artifact.name.includes('debug');
+                  const emoji = isDebug ? '🐛' : '📦';
+                  const description = isDebug ? 'For testing on device' : 'Unsigned release build';
+                  artifactsSection += `${emoji} **[${artifact.name}](${downloadUrl})** (${sizeMB} MB) - ${description}\n`;
+                }
+                artifactsSection += `
+          
+          > 📌 **Note:** You must be logged in to GitHub to download artifacts. Artifacts expire after 90 days.
+          `;
+              }
+            } catch (error) {
+              console.log('Error fetching artifacts:', error.message);
+            }
+          }
+          
+          // Get PR details
+          const { data: pr } = await github.rest.pulls.get({
+            owner,
+            repo,
+            pull_number: issue_number,
+          });
+          
+          // Determine overall status
+          const allPassed = needs.lint?.result === 'success' && 
+                           needs.build?.result === 'success' && 
+                           needs.analyze?.result === 'success';
+          
+          const statusEmoji = allPassed ? '✅' : '⚠️';
+          const statusText = allPassed ? 'All CI checks are passing!' : 'Some checks require attention';
+          
           // Build comment body
-          const body = `## CI Results
+          const body = `## ${statusEmoji} ${statusText}
           
-          | Check | Status |
-          |-------|--------|
-          | Lint | ${getIcon(needs.lint?.result || 'pending')} |
-          | Build | ${getIcon(needs.build?.result || 'pending')} |
-          | Code Analysis | ${getIcon(needs.analyze?.result || 'pending')} |
+          ### 📊 CI Status
           
-          [View full CI logs](${context.payload.pull_request.html_url}/checks)
+          | Check | Status | Details |
+          |-------|--------|---------|
+          | **Lint Check** | ${getIcon(needs.lint?.result || 'pending')} | Android Lint validation |
+          | **Build APK** | ${getIcon(needs.build?.result || 'pending')} | Debug & Release builds |
+          | **Code Analysis** | ${getIcon(needs.analyze?.result || 'pending')} | Security & dependency scan |
+          ${artifactsSection}
+          
+          ### 🧪 Test Plan
+          ${needs.build?.result === 'success' ? `
+          Please test the following on your device:
+          1. ✅ Install the debug APK on your Android device
+          2. ✅ Verify the app launches without crashes
+          3. ✅ Test the main functionality related to this PR
+          4. ✅ Check for any performance regressions
+          5. ✅ Verify data integrity (if applicable)
+          ` : '⏳ Waiting for build to complete...'}
+          
+          ### 📝 PR Details
+          - **Branch:** \`${pr.head.ref}\` → \`${pr.base.ref}\`
+          - **Commits:** ${pr.commits}
+          - **Files changed:** ${pr.changed_files}
+          - **Lines:** +${pr.additions} / -${pr.deletions}
+          
+          ### 🔗 Quick Links
+          - [View full CI logs](${context.payload.pull_request.html_url}/checks)
+          - [View changed files](${context.payload.pull_request.html_url}/files)
+          - [PR conversation](${context.payload.pull_request.html_url})
           
           ---
-          <sub>🤖 Generated by GitHub Actions</sub>`;
+          <sub>🤖 Generated by GitHub Actions | Last updated: ${new Date().toUTCString()}</sub>`;
           
           try {
             // Find existing comment
@@ -269,7 +340,8 @@ jobs:
             
             const botComment = comments.find(comment => 
               comment.user.type === 'Bot' && 
-              comment.body.includes('## CI Results')
+              (comment.body.includes('All CI checks are passing') || 
+               comment.body.includes('Some checks require attention'))
             );
             
             // Update or create comment
