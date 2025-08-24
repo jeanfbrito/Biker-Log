@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contributing guidelines (CONTRIBUTING.md)
 - Project improvement roadmap (IMPROVEMENTS.md)
 - PR labeler for automatic categorization
+- Basic IMU noise filtering with moving average and outlier detection (#27)
 
 ### Changed
 - Improved test coverage for calibration service
