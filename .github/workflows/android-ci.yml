@@ -340,7 +340,8 @@ jobs:
             
             const botComment = comments.find(comment => 
               comment.user.type === 'Bot' && 
-              comment.body.includes('## CI Results')
+              (comment.body.includes('All CI checks are passing') || 
+               comment.body.includes('Some checks require attention'))
             );
             
             // Update or create comment
