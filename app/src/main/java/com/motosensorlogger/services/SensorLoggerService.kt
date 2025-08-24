@@ -41,7 +41,9 @@ class SensorLoggerService : Service(), SensorEventListener {
         // GPS update intervals
         private const val GPS_UPDATE_INTERVAL = 200L // 5Hz default
         private const val GPS_HIGH_RATE_INTERVAL = 100L // 10Hz for cornering
-        private const val CORNERING_THRESHOLD_RAD_S = 0.3f // ~17 deg/s
+        private const val CORNERING_ENTER_THRESHOLD = 0.3f // ~17 deg/s to enter high rate
+        private const val CORNERING_EXIT_THRESHOLD = 0.25f // ~14 deg/s to exit high rate (hysteresis)
+        private const val RATE_CHANGE_DEBOUNCE_MS = 500L // Debounce period for rate changes
     }
 
     private lateinit var sensorManager: SensorManager
@@ -64,11 +66,13 @@ class SensorLoggerService : Service(), SensorEventListener {
     // Temporary storage for sensor fusion
     private var lastAccel = floatArrayOf(0f, 0f, 0f)
     private var lastGyro = floatArrayOf(0f, 0f, 0f)
-    
+
     // Adaptive GPS sampling
     private var isHighRateGps = false
     private var lastGyroMagnitude = 0f
     private var currentGpsInterval = GPS_UPDATE_INTERVAL
+    private var lastRateChangeTime = 0L
+    private val gpsUpdateLock = Object()
 
     // Calibration service
     private lateinit var calibrationService: CalibrationService
@@ -83,7 +87,7 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         // Initialize settings manager
         settingsManager = SettingsManager.getInstance(this)
-        
+
         // Initialize current GPS interval from settings
         currentGpsInterval = settingsManager.sensorSettings.value.gpsUpdateIntervalMs
 
@@ -447,17 +451,18 @@ class SensorLoggerService : Service(), SensorEventListener {
 
             Sensor.TYPE_GYROSCOPE -> {
                 lastGyro = event.values.clone()
-                
+
                 // Calculate gyro magnitude for cornering detection
-                lastGyroMagnitude = kotlin.math.sqrt(
-                    lastGyro[0] * lastGyro[0] + 
-                    lastGyro[1] * lastGyro[1] + 
-                    lastGyro[2] * lastGyro[2]
-                )
-                
+                lastGyroMagnitude =
+                    kotlin.math.sqrt(
+                        lastGyro[0] * lastGyro[0] +
+                            lastGyro[1] * lastGyro[1] +
+                            lastGyro[2] * lastGyro[2],
+                    )
+
                 // Check if we should switch GPS rate based on cornering
                 checkAdaptiveGpsRate()
-                
+
                 // Combine with accel for IMU event
                 csvLogger.logEvent(
                     ImuEvent(
@@ -526,11 +531,19 @@ class SensorLoggerService : Service(), SensorEventListener {
                 setWaitForAccurateLocation(false)
             }.build()
 
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            locationCallback,
-            Looper.getMainLooper(),
-        )
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper(),
+            ).addOnFailureListener { e ->
+                Log.e("SensorLogger", "Failed to request location updates", e)
+            }
+        } catch (e: SecurityException) {
+            Log.e("SensorLogger", "Location permission denied", e)
+        } catch (e: Exception) {
+            Log.e("SensorLogger", "Error requesting location updates", e)
+        }
     }
 
     private val locationCallback =
@@ -553,22 +566,53 @@ class SensorLoggerService : Service(), SensorEventListener {
                 }
             }
         }
-    
+
     private fun checkAdaptiveGpsRate() {
-        val isCornering = lastGyroMagnitude > CORNERING_THRESHOLD_RAD_S
-        val targetInterval = if (isCornering) {
-            GPS_HIGH_RATE_INTERVAL
-        } else {
-            settingsManager.sensorSettings.value.gpsUpdateIntervalMs
-        }
-        
-        // Only update if the rate has changed
-        if (targetInterval != currentGpsInterval) {
-            currentGpsInterval = targetInterval
-            if (isLogging.get() && !isPaused.get()) {
-                // Stop and restart location updates with new interval
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-                startLocationUpdates()
+        synchronized(gpsUpdateLock) {
+            // Implement hysteresis to prevent oscillation
+            val shouldBeHighRate =
+                when {
+                    isHighRateGps -> lastGyroMagnitude > CORNERING_EXIT_THRESHOLD
+                    else -> lastGyroMagnitude > CORNERING_ENTER_THRESHOLD
+                }
+
+            // Check debounce period
+            val now = System.currentTimeMillis()
+            if (now - lastRateChangeTime < RATE_CHANGE_DEBOUNCE_MS) {
+                return // Skip update due to debounce
+            }
+
+            // Determine target interval
+            val targetInterval =
+                if (shouldBeHighRate) {
+                    GPS_HIGH_RATE_INTERVAL
+                } else {
+                    settingsManager.sensorSettings.value.gpsUpdateIntervalMs
+                }
+
+            // Only update if the rate has changed
+            if (shouldBeHighRate != isHighRateGps || targetInterval != currentGpsInterval) {
+                isHighRateGps = shouldBeHighRate
+                currentGpsInterval = targetInterval
+                lastRateChangeTime = now
+
+                if (isLogging.get() && !isPaused.get()) {
+                    // Safely stop and restart location updates with new interval
+                    try {
+                        fusedLocationClient.removeLocationUpdates(locationCallback)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    startLocationUpdates()
+                                } else {
+                                    Log.e("SensorLogger", "Failed to remove location updates", task.exception)
+                                }
+                            }
+                    } catch (e: SecurityException) {
+                        Log.e("SensorLogger", "Location permission revoked during rate switch", e)
+                    } catch (e: Exception) {
+                        Log.e("SensorLogger", "Error switching GPS rate", e)
+                    }
+                }
             }
         }
     }
