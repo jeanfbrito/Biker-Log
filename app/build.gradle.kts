@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.motosensorlogger"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.motosensorlogger"
@@ -72,6 +72,12 @@ android {
     }
 }
 
+configurations {
+    implementation {
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk18on")
+    }
+}
+
 dependencies {
     // Core Android dependencies
     implementation("androidx.core:core-ktx:1.17.0")
@@ -89,7 +95,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
     
     // High-performance CSV writing
-    implementation("com.opencsv:opencsv:5.12.0")
+    implementation("com.opencsv:opencsv:5.7.1")
     
     // Lifecycle components for sensor management
     implementation("androidx.lifecycle:lifecycle-service:2.9.2")
@@ -109,6 +115,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("androidx.test:core:1.7.0")
     testImplementation("org.robolectric:robolectric:4.15.1")
+    testImplementation("org.bouncycastle:bcprov-jdk18on:1.79")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 }
