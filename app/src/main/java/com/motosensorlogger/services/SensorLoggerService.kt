@@ -17,6 +17,7 @@ import com.motosensorlogger.MainActivity
 import com.motosensorlogger.data.*
 import com.motosensorlogger.calibration.CalibrationService
 import com.motosensorlogger.calibration.CalibrationData
+import com.motosensorlogger.settings.SettingsManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,8 +34,9 @@ class SensorLoggerService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "sensor_logger_channel"
         
-        // Sensor sampling rates (microseconds)
-        private const val IMU_SAMPLING_PERIOD = 10000 // 100Hz
+        // Default sensor sampling rates (microseconds)
+        // These will be overridden by user settings
+        private const val DEFAULT_IMU_SAMPLING_PERIOD = 20000 // 50Hz (optimized default)
         private const val MAG_SAMPLING_PERIOD = 40000 // 25Hz
         private const val BARO_SAMPLING_PERIOD = 40000 // 25Hz
         
@@ -46,6 +48,7 @@ class SensorLoggerService : Service(), SensorEventListener {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var csvLogger: CsvLogger
     private lateinit var wakeLock: PowerManager.WakeLock
+    private lateinit var settingsManager: SettingsManager
     
     private val binder = LocalBinder()
     private val isLogging = AtomicBoolean(false)
@@ -72,6 +75,9 @@ class SensorLoggerService : Service(), SensorEventListener {
     
     override fun onCreate() {
         super.onCreate()
+        
+        // Initialize settings manager
+        settingsManager = SettingsManager.getInstance(this)
         
         // Initialize calibration service
         calibrationService = CalibrationService(this)
@@ -266,14 +272,20 @@ class SensorLoggerService : Service(), SensorEventListener {
         isPaused.set(false)
         updateServiceState()
         
-        // Re-register sensor listeners with high sampling rates
+        // Re-register sensor listeners with user-configured sampling rates
         sensorManager.unregisterListener(this)
         
+        // Get user-configured IMU sampling rate from settings
+        val samplingRateHz = settingsManager.sensorSettings.value.samplingRateHz
+        val imuSamplingPeriod = (1000000 / samplingRateHz) // Convert Hz to microseconds
+        
+        Log.d("SensorLogger", "Setting IMU sampling rate to $samplingRateHz Hz (period: $imuSamplingPeriod μs)")
+        
         accelerometer?.let {
-            sensorManager.registerListener(this, it, IMU_SAMPLING_PERIOD)
+            sensorManager.registerListener(this, it, imuSamplingPeriod)
         }
         gyroscope?.let {
-            sensorManager.registerListener(this, it, IMU_SAMPLING_PERIOD)
+            sensorManager.registerListener(this, it, imuSamplingPeriod)
         }
         magnetometer?.let {
             sensorManager.registerListener(this, it, MAG_SAMPLING_PERIOD)

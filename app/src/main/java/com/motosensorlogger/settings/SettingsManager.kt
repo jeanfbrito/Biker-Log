@@ -37,7 +37,7 @@ class SettingsManager private constructor(context: Context) {
         const val DEFAULT_CALIBRATION_STABILITY = 2.0f  // More forgiving for handheld
         const val DEFAULT_VIBRATION_BASELINE = true
         const val DEFAULT_MAGNETIC_CALIBRATION = true
-        const val DEFAULT_SENSOR_SAMPLING_RATE = 100 // Hz
+        const val DEFAULT_SENSOR_SAMPLING_RATE = 50 // Hz (optimized for battery and file size)
         const val DEFAULT_GPS_UPDATE_INTERVAL = 200L // ms (5Hz)
         const val DEFAULT_CSV_BUFFER_SIZE = 32 * 1024 // 32KB
         const val DEFAULT_AUTO_STOP_LOW_BATTERY = true

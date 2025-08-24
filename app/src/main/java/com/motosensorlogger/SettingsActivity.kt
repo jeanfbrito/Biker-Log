@@ -289,6 +289,15 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun addSamplingRateSetting(layout: LinearLayout) {
+        // Add helper text about sampling rates
+        TextView(this).apply {
+            text = "Lower rates save battery and reduce file size (~60% smaller at 50 Hz vs 100 Hz)"
+            setTextColor(Color.parseColor("#888888"))
+            textSize = 12f
+            setPadding(0, 0, 0, 10)
+            layout.addView(this)
+        }
+        
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 10, 0, 10)
@@ -302,24 +311,66 @@ class SettingsActivity : AppCompatActivity() {
         }
         container.addView(label)
         
-        val rates = arrayOf("50 Hz", "100 Hz", "200 Hz")
-        val rateValues = intArrayOf(50, 100, 200)
+        val rates = arrayOf("10 Hz (Ultra Low)", "25 Hz (Low)", "50 Hz (Recommended)", "75 Hz (Medium)", "100 Hz (High)", "150 Hz (Very High)", "200 Hz (Maximum)")
+        val rateValues = intArrayOf(10, 25, 50, 75, 100, 150, 200)
         
         samplingRateSpinner = Spinner(this).apply {
             adapter = ArrayAdapter(this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item, rates).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    settingsManager.setSensorSamplingRate(rateValues[position])
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
-            }
         }
         container.addView(samplingRateSpinner)
         
         layout.addView(container)
+        
+        // Add dynamic feedback text
+        val feedbackText = TextView(this).apply {
+            text = "Estimated file size: ~2.6 MB for 5 minutes"
+            setTextColor(Color.parseColor("#00FF00"))
+            textSize = 12f
+            setPadding(0, 5, 0, 10)
+        }
+        layout.addView(feedbackText)
+        
+        // Update feedback when selection changes
+        samplingRateSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                settingsManager.setSensorSamplingRate(rateValues[position])
+                
+                // Update feedback text based on selection
+                val estimatedSizeMB = when (rateValues[position]) {
+                    10 -> 0.5f
+                    25 -> 1.3f
+                    50 -> 2.6f  // Recommended
+                    75 -> 3.9f
+                    100 -> 5.2f
+                    150 -> 7.8f
+                    200 -> 10.4f
+                    else -> 2.6f
+                }
+                
+                val batteryImpact = when (rateValues[position]) {
+                    10 -> "Minimal"
+                    25 -> "Very Low"
+                    50 -> "Low"  // Recommended
+                    75 -> "Moderate"
+                    100 -> "High"
+                    150 -> "Very High"
+                    200 -> "Maximum"
+                    else -> "Low"
+                }
+                
+                feedbackText.text = "Est. file size: ~${estimatedSizeMB} MB/5min | Battery impact: $batteryImpact"
+                feedbackText.setTextColor(
+                    when {
+                        rateValues[position] <= 50 -> Color.parseColor("#00FF00") // Green for optimal
+                        rateValues[position] <= 100 -> Color.parseColor("#FFFF00") // Yellow for moderate
+                        else -> Color.parseColor("#FF8800") // Orange for high
+                    }
+                )
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
     
     private fun addAutoStopSetting(layout: LinearLayout) {
@@ -481,9 +532,14 @@ class SettingsActivity : AppCompatActivity() {
                 // Update sampling rate spinner
                 val rate = settings.samplingRateHz
                 val position = when (rate) {
-                    50 -> 0
-                    200 -> 2
-                    else -> 1 // Default to 100Hz
+                    10 -> 0
+                    25 -> 1
+                    50 -> 2  // Default/Recommended
+                    75 -> 3
+                    100 -> 4
+                    150 -> 5
+                    200 -> 6
+                    else -> 2 // Default to 50Hz (recommended)
                 }
                 samplingRateSpinner.setSelection(position)
             }
