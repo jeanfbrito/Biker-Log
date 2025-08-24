@@ -35,15 +35,9 @@ jobs:
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: ${{ env.JAVA_DISTRIBUTION }}
-        cache: gradle
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clean Gradle cache
-      run: |
-        rm -rf ~/.gradle/caches/jars-9/
-        ./gradlew clean --no-daemon
     
     - name: Run Android Lint
       run: ./gradlew lint
@@ -72,15 +66,9 @@ jobs:
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: ${{ env.JAVA_DISTRIBUTION }}
-        cache: gradle
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clean Gradle cache
-      run: |
-        rm -rf ~/.gradle/caches/jars-9/
-        ./gradlew clean --no-daemon
     
     - name: Run unit tests
       run: ./gradlew testDebugUnitTest --stacktrace --no-daemon
@@ -129,15 +117,9 @@ jobs:
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: ${{ env.JAVA_DISTRIBUTION }}
-        cache: gradle
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clean Gradle cache
-      run: |
-        rm -rf ~/.gradle/caches/jars-9/
-        ./gradlew clean --no-daemon
     
     - name: Build debug APK
       run: ./gradlew assembleDebug --stacktrace
@@ -176,15 +158,9 @@ jobs:
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: ${{ env.JAVA_DISTRIBUTION }}
-        cache: gradle
     
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    
-    - name: Clean Gradle cache
-      run: |
-        rm -rf ~/.gradle/caches/jars-9/
-        ./gradlew clean --no-daemon
     
     - name: Check for hardcoded secrets
       uses: trufflesecurity/trufflehog@main
