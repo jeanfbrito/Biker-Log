@@ -289,9 +289,15 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         // Get user-configured IMU sampling rate from settings
         val samplingRateHz = settingsManager.sensorSettings.value.samplingRateHz
-        val imuSamplingPeriod = (1000000 / samplingRateHz) // Convert Hz to microseconds
+        
+        // Validate sampling rate to prevent division by zero
+        val validSamplingRateHz = if (samplingRateHz > 0) samplingRateHz else 50 // Default to 50Hz if invalid
+        val imuSamplingPeriod = (1000000 / validSamplingRateHz) // Convert Hz to microseconds
 
-        Log.d("SensorLogger", "Setting IMU sampling rate to $samplingRateHz Hz (period: $imuSamplingPeriod μs)")
+        if (samplingRateHz <= 0) {
+            Log.w("SensorLogger", "Invalid sampling rate: $samplingRateHz Hz, using default 50 Hz")
+        }
+        Log.d("SensorLogger", "Setting IMU sampling rate to $validSamplingRateHz Hz (period: $imuSamplingPeriod μs)")
 
         accelerometer?.let {
             sensorManager.registerListener(this, it, imuSamplingPeriod)
