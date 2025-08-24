@@ -8,106 +8,109 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Location
 import android.os.*
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import com.motosensorlogger.MainActivity
-import com.motosensorlogger.data.*
-import com.motosensorlogger.calibration.CalibrationService
 import com.motosensorlogger.calibration.CalibrationData
+import com.motosensorlogger.calibration.CalibrationService
+import com.motosensorlogger.data.*
 import com.motosensorlogger.settings.SettingsManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
-import android.util.Log
 
 class SensorLoggerService : Service(), SensorEventListener {
-    
     companion object {
         const val ACTION_START_LOGGING = "com.motosensorlogger.START_LOGGING"
         const val ACTION_STOP_LOGGING = "com.motosensorlogger.STOP_LOGGING"
         const val ACTION_PAUSE_LOGGING = "com.motosensorlogger.PAUSE_LOGGING"
         const val ACTION_RESUME_LOGGING = "com.motosensorlogger.RESUME_LOGGING"
-        
+
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "sensor_logger_channel"
-        
+
         // Default sensor sampling rates (microseconds)
         // These will be overridden by user settings
         private const val DEFAULT_IMU_SAMPLING_PERIOD = 20000 // 50Hz (optimized default)
         private const val MAG_SAMPLING_PERIOD = 40000 // 25Hz
         private const val BARO_SAMPLING_PERIOD = 40000 // 25Hz
-        
+
         // GPS update interval
         private const val GPS_UPDATE_INTERVAL = 200L // 5Hz in milliseconds
     }
-    
+
     private lateinit var sensorManager: SensorManager
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var csvLogger: CsvLogger
     private lateinit var wakeLock: PowerManager.WakeLock
     private lateinit var settingsManager: SettingsManager
-    
+
     private val binder = LocalBinder()
     private val isLogging = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
-    
+
     private var accelerometer: Sensor? = null
     private var gyroscope: Sensor? = null
     private var magnetometer: Sensor? = null
     private var barometer: Sensor? = null
-    
+
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    
+
     // Temporary storage for sensor fusion
     private var lastAccel = floatArrayOf(0f, 0f, 0f)
     private var lastGyro = floatArrayOf(0f, 0f, 0f)
-    
+
     // Calibration service
     private lateinit var calibrationService: CalibrationService
     private var calibrationData: CalibrationData? = null
-    
+
     inner class LocalBinder : Binder() {
         fun getService(): SensorLoggerService = this@SensorLoggerService
     }
-    
+
     override fun onCreate() {
         super.onCreate()
-        
+
         // Initialize settings manager
         settingsManager = SettingsManager.getInstance(this)
-        
+
         // Initialize calibration service
         calibrationService = CalibrationService(this)
-        
+
         // Initialize sensors
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         gyroscope = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
         barometer = sensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE)
-        
+
         // Initialize location client
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        
+
         // Initialize CSV logger
         csvLogger = CsvLogger(this)
-        
+
         // Acquire wake lock for continuous operation
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "MotoSensorLogger::SensorWakeLock"
-        )
-        
+        wakeLock =
+            powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "MotoSensorLogger::SensorWakeLock",
+            )
+
         createNotificationChannel()
     }
-    
+
     override fun onBind(intent: Intent): IBinder = binder
-    
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         when (intent?.action) {
             ACTION_START_LOGGING -> {
                 val skipCalibration = intent.getBooleanExtra("skip_calibration", false)
@@ -119,42 +122,45 @@ class SensorLoggerService : Service(), SensorEventListener {
         }
         return START_STICKY
     }
-    
+
     private fun startLogging(skipCalibration: Boolean = false) {
         if (isLogging.get()) return
-        
+
         // CRITICAL: Always reset calibration state to prevent mixed data
         calibrationData = null
         calibrationService.clearCalibration()
-        
+
         Log.d("SensorLogger", "Starting logging - skipCalibration=$skipCalibration, calibrationData=null")
-        
+
         // Start foreground service
-        startForeground(NOTIFICATION_ID, createNotification(
-            if (skipCalibration) "Starting recording..." else "Calibrating sensors..."
-        ))
-        
+        startForeground(
+            NOTIFICATION_ID,
+            createNotification(
+                if (skipCalibration) "Starting recording..." else "Calibrating sensors...",
+            ),
+        )
+
         // Acquire wake lock
         if (!wakeLock.isHeld) {
             wakeLock.acquire(12 * 60 * 60 * 1000L) // 12 hours max
         }
-        
+
         if (skipCalibration) {
             // Start recording directly without calibration
             Log.d("SensorLogger", "User chose to skip calibration - recording without calibration")
-            finishCalibration()  // This will now correctly log as non-calibrated
+            finishCalibration() // This will now correctly log as non-calibrated
         } else {
             // Start calibration process
             startCalibration()
         }
     }
-    
+
     private fun startCalibration() {
         Log.d("SensorLogger", "Starting calibration")
-        
+
         // Update state to calibrating
         updateServiceState()
-        
+
         // Register sensors for calibration
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
@@ -165,23 +171,23 @@ class SensorLoggerService : Service(), SensorEventListener {
         magnetometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
-        
+
         // Start calibration service
         calibrationService.startCalibration()
-        
+
         // Monitor calibration progress in background
         serviceScope.launch {
             calibrationService.progress
                 .takeWhile { progress ->
                     // Continue collecting until completed or failed
                     progress.state != CalibrationService.State.COMPLETED &&
-                    progress.state != CalibrationService.State.FAILED
+                        progress.state != CalibrationService.State.FAILED
                 }
                 .collect { progress ->
                     Log.d("SensorLogger", "Calibration: ${progress.state} - ${progress.message}")
                     updateNotification(progress.message)
                 }
-            
+
             // Check final state
             val finalState = calibrationService.state.value
             when (finalState) {
@@ -196,22 +202,22 @@ class SensorLoggerService : Service(), SensorEventListener {
                     updateNotification("Calibration failed")
                     // Don't start recording automatically - wait for user decision
                     // The MainActivity will show the dialog and handle the user's choice
-                    
+
                     // Unregister sensors that were registered for calibration
                     sensorManager.unregisterListener(this@SensorLoggerService)
-                    
+
                     // Clean up calibration
                     calibrationService.clearCalibration()
-                    
+
                     // Update state to idle
                     updateServiceState()
-                    
+
                     // Stop foreground but keep service alive briefly for potential retry
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     if (wakeLock.isHeld) {
                         wakeLock.release()
                     }
-                    
+
                     // Stop self after delay to allow for retry
                     serviceScope.launch {
                         delay(5000) // Wait 5 seconds for potential retry
@@ -231,56 +237,62 @@ class SensorLoggerService : Service(), SensorEventListener {
             }
         }
     }
-    
+
     private fun finishCalibration() {
         // Update notification to show we're done calibrating
         updateNotification("Starting recording...")
         // Start actual logging with calibration data
         startLoggingWithCalibration()
     }
-    
+
     private fun startLoggingWithCalibration() {
         // CRITICAL: Ensure we have consistent calibration state
-        val validCalibrationData = calibrationData?.takeIf { 
-            it.referencePitch != null && 
-            it.referenceRoll != null && 
-            it.quality != null 
-        }
-        
-        val calibrationHeader = if (validCalibrationData != null) {
-            Log.d("SensorLogger", "Starting WITH calibration: pitch=${validCalibrationData.referencePitch}, roll=${validCalibrationData.referenceRoll}")
-            validCalibrationData.toCsvHeader()
-        } else {
-            Log.d("SensorLogger", "Starting WITHOUT calibration")
-            // Explicitly clear any partial calibration data
-            calibrationData = null
-            """
-# Calibration: {
-#   "status": "not_calibrated",
-#   "reason": "User skipped calibration or calibration failed",
-#   "timestamp": ${System.currentTimeMillis()},
-#   "note": "Raw sensor data without calibration reference"
-# }""".trimIndent()
-        }
-        
+        val validCalibrationData =
+            calibrationData?.takeIf {
+                it.referencePitch != null &&
+                    it.referenceRoll != null &&
+                    it.quality != null
+            }
+
+        val calibrationHeader =
+            if (validCalibrationData != null) {
+                Log.d(
+                    "SensorLogger",
+                    "Starting WITH calibration: pitch=${validCalibrationData.referencePitch}, roll=${validCalibrationData.referenceRoll}",
+                )
+                validCalibrationData.toCsvHeader()
+            } else {
+                Log.d("SensorLogger", "Starting WITHOUT calibration")
+                // Explicitly clear any partial calibration data
+                calibrationData = null
+                """
+                # Calibration: {
+                #   "status": "not_calibrated",
+                #   "reason": "User skipped calibration or calibration failed",
+                #   "timestamp": ${System.currentTimeMillis()},
+                #   "note": "Raw sensor data without calibration reference"
+                # }
+                """.trimIndent()
+            }
+
         if (!csvLogger.startLogging(calibrationHeader)) {
             stopSelf()
             return
         }
-        
+
         isLogging.set(true)
         isPaused.set(false)
         updateServiceState()
-        
+
         // Re-register sensor listeners with user-configured sampling rates
         sensorManager.unregisterListener(this)
-        
+
         // Get user-configured IMU sampling rate from settings
         val samplingRateHz = settingsManager.sensorSettings.value.samplingRateHz
         val imuSamplingPeriod = (1000000 / samplingRateHz) // Convert Hz to microseconds
-        
+
         Log.d("SensorLogger", "Setting IMU sampling rate to $samplingRateHz Hz (period: $imuSamplingPeriod μs)")
-        
+
         accelerometer?.let {
             sensorManager.registerListener(this, it, imuSamplingPeriod)
         }
@@ -293,84 +305,87 @@ class SensorLoggerService : Service(), SensorEventListener {
         barometer?.let {
             sensorManager.registerListener(this, it, BARO_SAMPLING_PERIOD)
         }
-        
+
         // Start GPS updates
         startLocationUpdates()
-        
+
         // Update notification
         updateNotification("Recording sensor data...")
-        
+
         // Log session start with calibration info - MUST match header state
-        val validCalibration = calibrationData?.takeIf { 
-            it.referencePitch != null && 
-            it.referenceRoll != null && 
-            it.quality != null 
-        }
-        
-        val sessionMetadata = if (validCalibration != null) {
-            "Calibrated: pitch=${"%.1f".format(validCalibration.referencePitch)}°, roll=${"%.1f".format(validCalibration.referenceRoll)}°, quality=${validCalibration.quality.getQualityLevel()}"
-        } else {
-            "Not calibrated - recording raw sensor data"
-        }
-        
+        val validCalibration =
+            calibrationData?.takeIf {
+                it.referencePitch != null &&
+                    it.referenceRoll != null &&
+                    it.quality != null
+            }
+
+        val sessionMetadata =
+            if (validCalibration != null) {
+                "Calibrated: pitch=${"%.1f".format(
+                    validCalibration.referencePitch,
+                )}°, roll=${"%.1f".format(validCalibration.referenceRoll)}°, quality=${validCalibration.quality.getQualityLevel()}"
+            } else {
+                "Not calibrated - recording raw sensor data"
+            }
+
         csvLogger.logEvent(
             SpecialEvent(
                 System.currentTimeMillis(),
                 SpecialEvent.EventType.SESSION_START,
-                metadata = sessionMetadata
-            )
+                metadata = sessionMetadata,
+            ),
         )
     }
-    
+
     private fun stopLogging() {
         if (!isLogging.get()) return
-        
+
         // Log session end
         csvLogger.logEvent(
             SpecialEvent(
                 System.currentTimeMillis(),
                 SpecialEvent.EventType.SESSION_END,
-                metadata = "Logging stopped"
-            )
+                metadata = "Logging stopped",
+            ),
         )
-        
+
         isLogging.set(false)
         updateServiceState()
-        
+
         // Unregister sensor listeners
         sensorManager.unregisterListener(this)
-        
+
         // Stop location updates
         fusedLocationClient.removeLocationUpdates(locationCallback)
-        
+
         // Stop CSV logging
         serviceScope.launch {
             csvLogger.stopLogging()
         }
-        
+
         // Release wake lock
         if (wakeLock.isHeld) {
             wakeLock.release()
         }
-        
+
         // Stop foreground service
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
-    
+
     private fun pauseLogging() {
         isPaused.set(true)
         updateServiceState()
         updateNotification("Logging paused")
     }
-    
+
     private fun resumeLogging() {
         isPaused.set(false)
         updateServiceState()
         updateNotification("Recording sensor data...")
     }
-    
-    
+
     override fun onSensorChanged(event: SensorEvent) {
         // During calibration, feed samples to calibration service
         if (calibrationService.state.value == CalibrationService.State.COLLECTING) {
@@ -387,18 +402,18 @@ class SensorLoggerService : Service(), SensorEventListener {
                         calibrationService.addSensorSample(
                             lastAccel,
                             lastGyro,
-                            event.values.clone()
+                            event.values.clone(),
                         )
                     }
                 }
             }
             return
         }
-        
+
         if (!isLogging.get() || isPaused.get()) return
-        
+
         val timestamp = System.currentTimeMillis()
-        
+
         // Log RAW sensor data - no transformation!
         // Calibration will be applied during post-processing
         when (event.sensor.type) {
@@ -409,119 +424,139 @@ class SensorLoggerService : Service(), SensorEventListener {
                     csvLogger.logEvent(
                         ImuEvent(
                             timestamp,
-                            lastAccel[0], lastAccel[1], lastAccel[2],
-                            lastGyro[0], lastGyro[1], lastGyro[2]
-                        )
+                            lastAccel[0],
+                            lastAccel[1],
+                            lastAccel[2],
+                            lastGyro[0],
+                            lastGyro[1],
+                            lastGyro[2],
+                        ),
                     )
                 }
             }
-            
+
             Sensor.TYPE_GYROSCOPE -> {
                 lastGyro = event.values.clone()
                 // Combine with accel for IMU event
                 csvLogger.logEvent(
                     ImuEvent(
                         timestamp,
-                        lastAccel[0], lastAccel[1], lastAccel[2],
-                        lastGyro[0], lastGyro[1], lastGyro[2]
-                    )
+                        lastAccel[0],
+                        lastAccel[1],
+                        lastAccel[2],
+                        lastGyro[0],
+                        lastGyro[1],
+                        lastGyro[2],
+                    ),
                 )
             }
-            
+
             Sensor.TYPE_MAGNETIC_FIELD -> {
                 // Log raw magnetometer data
                 csvLogger.logEvent(
                     MagEvent(
                         timestamp,
-                        event.values[0], event.values[1], event.values[2]
-                    )
+                        event.values[0],
+                        event.values[1],
+                        event.values[2],
+                    ),
                 )
             }
-            
+
             Sensor.TYPE_PRESSURE -> {
                 // Calculate altitude from pressure
-                val altitude = SensorManager.getAltitude(
-                    SensorManager.PRESSURE_STANDARD_ATMOSPHERE,
-                    event.values[0]
-                )
+                val altitude =
+                    SensorManager.getAltitude(
+                        SensorManager.PRESSURE_STANDARD_ATMOSPHERE,
+                        event.values[0],
+                    )
                 csvLogger.logEvent(
-                    BaroEvent(timestamp, altitude, event.values[0])
+                    BaroEvent(timestamp, altitude, event.values[0]),
                 )
             }
         }
     }
-    
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+
+    override fun onAccuracyChanged(
+        sensor: Sensor?,
+        accuracy: Int,
+    ) {
         // Handle accuracy changes if needed
     }
-    
+
     private fun startLocationUpdates() {
         if (ContextCompat.checkSelfPermission(
                 this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
             ) != PackageManager.PERMISSION_GRANTED
         ) {
             return
         }
-        
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            GPS_UPDATE_INTERVAL
-        ).apply {
-            setMinUpdateIntervalMillis(GPS_UPDATE_INTERVAL)
-            setWaitForAccurateLocation(false)
-        }.build()
-        
+
+        val locationRequest =
+            LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                GPS_UPDATE_INTERVAL,
+            ).apply {
+                setMinUpdateIntervalMillis(GPS_UPDATE_INTERVAL)
+                setWaitForAccurateLocation(false)
+            }.build()
+
         fusedLocationClient.requestLocationUpdates(
             locationRequest,
             locationCallback,
-            Looper.getMainLooper()
+            Looper.getMainLooper(),
         )
     }
-    
-    private val locationCallback = object : LocationCallback() {
-        override fun onLocationResult(locationResult: LocationResult) {
-            if (!isLogging.get() || isPaused.get()) return
-            
-            locationResult.lastLocation?.let { location ->
-                csvLogger.logEvent(
-                    GpsEvent(
-                        System.currentTimeMillis(),
-                        location.latitude,
-                        location.longitude,
-                        location.altitude,
-                        location.speed,
-                        location.bearing,
-                        location.accuracy
+
+    private val locationCallback =
+        object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                if (!isLogging.get() || isPaused.get()) return
+
+                locationResult.lastLocation?.let { location ->
+                    csvLogger.logEvent(
+                        GpsEvent(
+                            System.currentTimeMillis(),
+                            location.latitude,
+                            location.longitude,
+                            location.altitude,
+                            location.speed,
+                            location.bearing,
+                            location.accuracy,
+                        ),
                     )
-                )
+                }
             }
         }
-    }
-    
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Sensor Logger Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Notification for sensor logging service"
-                setShowBadge(false)
-            }
-            
+            val channel =
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Sensor Logger Service",
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply {
+                    description = "Notification for sensor logging service"
+                    setShowBadge(false)
+                }
+
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
         }
     }
-    
+
     private fun createNotification(contentText: String): Notification {
         val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
+        val pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Moto Sensor Logger")
             .setContentText(contentText)
@@ -530,50 +565,55 @@ class SensorLoggerService : Service(), SensorEventListener {
             .setOngoing(true)
             .build()
     }
-    
+
     private fun updateNotification(contentText: String) {
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, createNotification(contentText))
     }
-    
+
     fun isCurrentlyLogging(): Boolean = isLogging.get()
+
     fun isCurrentlyPaused(): Boolean = isPaused.get()
+
     fun getCsvLogger(): CsvLogger = csvLogger
+
     fun getCalibrationData(): com.motosensorlogger.calibration.CalibrationData? = calibrationData
+
     fun getCalibrationService(): CalibrationService = calibrationService
-    
+
     // Service state for UI synchronization
     enum class ServiceState {
         IDLE,
         CALIBRATING,
         RECORDING,
-        PAUSED
+        PAUSED,
     }
-    
+
     // Reactive state that UI can observe
     private val _serviceState = MutableStateFlow(ServiceState.IDLE)
     val serviceState: StateFlow<ServiceState> = _serviceState.asStateFlow()
-    
+
     private fun updateServiceState() {
-        val newState = when {
-            !isLogging.get() && calibrationService.state.value == CalibrationService.State.IDLE -> ServiceState.IDLE
-            calibrationService.state.value == CalibrationService.State.COLLECTING || 
-            calibrationService.state.value == CalibrationService.State.PROCESSING -> ServiceState.CALIBRATING
-            isLogging.get() && isPaused.get() -> ServiceState.PAUSED
-            isLogging.get() -> ServiceState.RECORDING
-            else -> ServiceState.IDLE
-        }
+        val newState =
+            when {
+                !isLogging.get() && calibrationService.state.value == CalibrationService.State.IDLE -> ServiceState.IDLE
+                calibrationService.state.value == CalibrationService.State.COLLECTING ||
+                    calibrationService.state.value == CalibrationService.State.PROCESSING -> ServiceState.CALIBRATING
+                isLogging.get() && isPaused.get() -> ServiceState.PAUSED
+                isLogging.get() -> ServiceState.RECORDING
+                else -> ServiceState.IDLE
+            }
         _serviceState.value = newState
     }
-    
+
     fun getCurrentState(): ServiceState = _serviceState.value
-    
+
     override fun onDestroy() {
         super.onDestroy()
         stopLogging()
         csvLogger.cleanup()
         calibrationService.dispose()
-        calibrationData = null  // Clean up calibration data
+        calibrationData = null // Clean up calibration data
         serviceScope.cancel()
     }
 }
