@@ -121,7 +121,7 @@ timestamp,sensor_type,data1,data2,data3,data4,data5,data6
 ## 🛠️ Technical Requirements
 
 ### Android Requirements
-- **Minimum**: Android 8.0 (API level 26)
+- **Minimum**: Android 11 (API level 30)
 - **Recommended**: Android 12+ with full sensor suite
 - **Sensors Required**: Accelerometer, Gyroscope, GPS
 - **Sensors Optional**: Barometer, Magnetometer
