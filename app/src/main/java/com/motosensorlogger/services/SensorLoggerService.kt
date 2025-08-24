@@ -38,8 +38,10 @@ class SensorLoggerService : Service(), SensorEventListener {
         private const val MAG_SAMPLING_PERIOD = 40000 // 25Hz
         private const val BARO_SAMPLING_PERIOD = 40000 // 25Hz
 
-        // GPS update interval
-        private const val GPS_UPDATE_INTERVAL = 200L // 5Hz in milliseconds
+        // GPS update intervals
+        private const val GPS_UPDATE_INTERVAL = 200L // 5Hz default
+        private const val GPS_HIGH_RATE_INTERVAL = 100L // 10Hz for cornering
+        private const val CORNERING_THRESHOLD_RAD_S = 0.3f // ~17 deg/s
     }
 
     private lateinit var sensorManager: SensorManager
@@ -62,6 +64,11 @@ class SensorLoggerService : Service(), SensorEventListener {
     // Temporary storage for sensor fusion
     private var lastAccel = floatArrayOf(0f, 0f, 0f)
     private var lastGyro = floatArrayOf(0f, 0f, 0f)
+    
+    // Adaptive GPS sampling
+    private var isHighRateGps = false
+    private var lastGyroMagnitude = 0f
+    private var currentGpsInterval = GPS_UPDATE_INTERVAL
 
     // Calibration service
     private lateinit var calibrationService: CalibrationService
@@ -76,6 +83,9 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         // Initialize settings manager
         settingsManager = SettingsManager.getInstance(this)
+        
+        // Initialize current GPS interval from settings
+        currentGpsInterval = settingsManager.sensorSettings.value.gpsUpdateIntervalMs
 
         // Initialize calibration service
         calibrationService = CalibrationService(this)
@@ -437,6 +447,17 @@ class SensorLoggerService : Service(), SensorEventListener {
 
             Sensor.TYPE_GYROSCOPE -> {
                 lastGyro = event.values.clone()
+                
+                // Calculate gyro magnitude for cornering detection
+                lastGyroMagnitude = kotlin.math.sqrt(
+                    lastGyro[0] * lastGyro[0] + 
+                    lastGyro[1] * lastGyro[1] + 
+                    lastGyro[2] * lastGyro[2]
+                )
+                
+                // Check if we should switch GPS rate based on cornering
+                checkAdaptiveGpsRate()
+                
                 // Combine with accel for IMU event
                 csvLogger.logEvent(
                     ImuEvent(
@@ -493,12 +514,15 @@ class SensorLoggerService : Service(), SensorEventListener {
             return
         }
 
+        // Use current GPS interval (may be adaptive)
+        val gpsInterval = currentGpsInterval
+
         val locationRequest =
             LocationRequest.Builder(
                 Priority.PRIORITY_HIGH_ACCURACY,
-                GPS_UPDATE_INTERVAL,
+                gpsInterval,
             ).apply {
-                setMinUpdateIntervalMillis(GPS_UPDATE_INTERVAL)
+                setMinUpdateIntervalMillis(gpsInterval)
                 setWaitForAccurateLocation(false)
             }.build()
 
@@ -529,6 +553,25 @@ class SensorLoggerService : Service(), SensorEventListener {
                 }
             }
         }
+    
+    private fun checkAdaptiveGpsRate() {
+        val isCornering = lastGyroMagnitude > CORNERING_THRESHOLD_RAD_S
+        val targetInterval = if (isCornering) {
+            GPS_HIGH_RATE_INTERVAL
+        } else {
+            settingsManager.sensorSettings.value.gpsUpdateIntervalMs
+        }
+        
+        // Only update if the rate has changed
+        if (targetInterval != currentGpsInterval) {
+            currentGpsInterval = targetInterval
+            if (isLogging.get() && !isPaused.get()) {
+                // Stop and restart location updates with new interval
+                fusedLocationClient.removeLocationUpdates(locationCallback)
+                startLocationUpdates()
+            }
+        }
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

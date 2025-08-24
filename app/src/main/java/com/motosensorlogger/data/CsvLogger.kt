@@ -75,7 +75,7 @@ class CsvLogger(private val context: Context) {
                                                 #   "events": {
                                                 #     "GPS": {
                                                 #       "description": "GPS positioning data",
-                                                #       "frequency": "1-5Hz",
+                                                #       "frequency": "5-10Hz (adaptive)",
                                                 #       "fields": [
                                                 #         {"name": "data1", "type": "double", "unit": "degrees", "description": "latitude"},
                                                 #         {"name": "data2", "type": "double", "unit": "degrees", "description": "longitude"},
