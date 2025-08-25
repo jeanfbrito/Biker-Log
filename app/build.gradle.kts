@@ -110,7 +110,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     // High-performance CSV writing
-    implementation("com.opencsv:opencsv:5.7.1")
+    implementation("com.opencsv:opencsv:5.12.0")
 
     // Lifecycle components for sensor management
     implementation("androidx.lifecycle:lifecycle-service:2.9.2")
