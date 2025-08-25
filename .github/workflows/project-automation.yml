@@ -16,6 +16,7 @@ jobs:
   update_project_board:
     runs-on: ubuntu-latest
     if: github.repository == 'jeanfbrito/Biker-Log'
+    continue-on-error: true
     
     steps:
       - name: Add item to project
@@ -29,7 +30,7 @@ jobs:
       - name: Set status based on issue/PR state
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PROJECT_TOKEN }}
+          github-token: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
             const eventName = context.eventName;
@@ -89,12 +90,13 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'jeanfbrito/Biker-Log'
     needs: update_project_board
+    continue-on-error: true
     
     steps:
       - name: Update project item status
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PROJECT_TOKEN }}
+          github-token: ${{ secrets.PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             // This is a more complete implementation that would update the project status
             // You'll need to customize this based on your specific project structure
