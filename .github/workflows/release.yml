@@ -106,13 +106,13 @@ jobs:
         fetch-depth: 0
     
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: release-apk-${{ needs.build-release.outputs.version }}
         path: ./artifacts
     
     - name: Download checksums
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: checksums-${{ needs.build-release.outputs.version }}
         path: ./artifacts
