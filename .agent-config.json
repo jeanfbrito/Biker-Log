@@ -1,0 +1,7 @@
+{
+  "worktree_base_path": "../biker-log-agents",
+  "auto_create_worktree": true,
+  "branch_prefix": "agent",
+  "cleanup_on_merge": true,
+  "default_base_branch": "main"
+}
