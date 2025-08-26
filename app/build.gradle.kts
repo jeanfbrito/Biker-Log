@@ -68,15 +68,22 @@ android {
         // Performance optimizations for Kotlin
         freeCompilerArgs =
             listOf(
-                "-Xopt-in=kotlin.RequiresOptIn",
-                "-Xopt-in=kotlin.ExperimentalStdlibApi",
-                "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+                "-opt-in=kotlin.RequiresOptIn",
+                "-opt-in=kotlin.ExperimentalStdlibApi",
+                "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
             )
     }
 
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    lint {
+        warningsAsErrors = true
+        abortOnError = true
+        checkDependencies = true
+        disable += listOf("ObsoleteLintCustomCheck")
     }
 
     // Performance packaging options

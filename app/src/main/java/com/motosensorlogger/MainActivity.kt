@@ -426,6 +426,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
 
     override fun onProviderDisabled(provider: String) {}
 
+    @Deprecated("Deprecated in LocationListener")
     override fun onStatusChanged(
         provider: String?,
         status: Int,
