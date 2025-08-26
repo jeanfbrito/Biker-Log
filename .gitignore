@@ -83,3 +83,7 @@ lint/reports/
 # Cordova plugins for Cordova-based apps
 # https://cordova.apache.org/docs/en/latest/guide/platforms/android/plugin.html#edit-plugin
 /platforms/plugins/
+
+# Agent session files
+.agent-session
+.agent-config.json

@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## IMPORTANT: Automatic Worktree Setup for Parallel Work
+
+**Every new agent session MUST work in its own git worktree to prevent conflicts.**
+
+Before starting any work, run:
+```bash
+# This creates an isolated workspace for this agent session
+source ./scripts/agent-auto-setup.sh
+```
+
+This ensures:
+- Each agent works in an isolated branch
+- No conflicts between parallel agents
+- Clean merge workflow
+- Automatic tracking of agent work
+
+To clean up after work is done:
+```bash
+# Replace AGENT_ID with the actual agent ID
+./scripts/agent-cleanup.sh <AGENT_ID>
+```
+
 ## Build and Development Commands
 
 ### Building the App
