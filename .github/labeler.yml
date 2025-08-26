@@ -1,124 +1,123 @@
-# Configuration for GitHub Labeler Action
+# Configuration for GitHub Labeler Action v5
 # This file defines which labels to apply based on file changes
 
 # Documentation changes
 documentation:
-  - '*.md'
-  - 'docs/**'
-  - '.github/*.md'
-  - 'LICENSE*'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**'
+      - '.github/*.md'
+      - 'LICENSE*'
 
 # Build and configuration
 build:
-  - '*.gradle'
-  - '*.gradle.kts'
-  - 'gradle/**'
-  - 'gradlew*'
-  - '.github/workflows/**'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.gradle'
+      - '*.gradle.kts'
+      - 'gradle/**'
+      - 'gradlew*'
+      - '.github/workflows/**'
 
 # Test files
 test:
-  - 'app/src/test/**'
-  - 'app/src/androidTest/**'
-  - '**/test/**'
-  - '**/*Test.kt'
-  - '**/*Test.java'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'app/src/test/**'
+      - 'app/src/androidTest/**'
+      - '**/test/**'
+      - '**/*Test.kt'
+      - '**/*Test.java'
 
 # UI/UX changes
 ui:
-  - 'app/src/main/res/layout/**'
-  - 'app/src/main/res/drawable/**'
-  - 'app/src/main/res/values/colors.xml'
-  - 'app/src/main/res/values/themes.xml'
-  - 'app/src/main/res/values/styles.xml'
-  - 'app/src/main/res/menu/**'
-  - '**/views/**'
-  - '**/*View.kt'
-  - '**/*Activity.kt'
-  - '**/*Fragment.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'app/src/main/res/layout/**'
+      - 'app/src/main/res/drawable/**'
+      - 'app/src/main/res/values/colors.xml'
+      - 'app/src/main/res/values/themes.xml'
+      - 'app/src/main/res/values/styles.xml'
+      - 'app/src/main/res/menu/**'
+      - '**/views/**'
+      - '**/*View.kt'
+      - '**/*Activity.kt'
+      - '**/*Fragment.kt'
 
 # Data and database
 data:
-  - '**/data/**'
-  - '**/*Repository.kt'
-  - '**/*Dao.kt'
-  - '**/*Database.kt'
-  - '**/*Entity.kt'
-  - '**/CsvLogger.kt'
-  - '**/SensorEvent.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/data/**'
+      - '**/*Repository.kt'
+      - '**/*Dao.kt'
+      - '**/*Database.kt'
+      - '**/*Entity.kt'
+      - '**/CsvLogger.kt'
+      - '**/SensorEvent.kt'
 
 # Calibration system
 calibration:
-  - '**/calibration/**'
-  - '**/*Calibration*.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/calibration/**'
+      - '**/*Calibration*.kt'
 
 # Services and background tasks
 service:
-  - '**/services/**'
-  - '**/*Service.kt'
-  - '**/*Worker.kt'
-  - '**/*Receiver.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/services/**'
+      - '**/*Service.kt'
+      - '**/*Worker.kt'
+      - '**/*Receiver.kt'
 
 # Dependencies
 dependencies:
-  - 'app/build.gradle.kts'
-  - 'build.gradle.kts'
-  - 'gradle/libs.versions.toml'
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle/libs.versions.toml'
 
 # GitHub specific
 github:
-  - '.github/**'
-  - '.gitignore'
-  - '.gitattributes'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+      - '.gitignore'
+      - '.gitattributes'
 
 # Performance related
 performance:
-  - '**/*Performance*.kt'
-  - '**/*Optimization*.kt'
-  - '**/*Cache*.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*Performance*.kt'
+      - '**/*Optimization*.kt'
+      - '**/*Cache*.kt'
 
 # Security related
 security:
-  - '**/*Security*.kt'
-  - '**/*Encryption*.kt'
-  - '**/*Auth*.kt'
-  - 'app/proguard-rules.pro'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*Security*.kt'
+      - '**/*Encryption*.kt'
+      - '**/*Auth*.kt'
+      - 'app/proguard-rules.pro'
 
 # Sensor related
 sensors:
-  - '**/*Sensor*.kt'
-  - '**/SensorLoggerService.kt'
-  - '**/*Telemetry*.kt'
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*Sensor*.kt'
+      - '**/SensorLoggerService.kt'
+      - '**/*Telemetry*.kt'
 
 # Settings and configuration
 settings:
-  - '**/*Settings*.kt'
-  - '**/*Config*.kt'
-  - '**/*Preferences*.kt'
-
-# Small changes
-size/XS:
-  - any: ['**/*']
-    all: ['!*.md']
-    changed-files-threshold: 5
-    changed-lines-threshold: 10
-
-# Medium changes
-size/M:
-  - any: ['**/*']
-    all: ['!*.md']
-    changed-files-threshold: 10
-    changed-lines-threshold: 100
-
-# Large changes
-size/L:
-  - any: ['**/*']
-    all: ['!*.md']
-    changed-files-threshold: 20
-    changed-lines-threshold: 500
-
-# Extra large changes
-size/XL:
-  - any: ['**/*']
-    changed-files-threshold: 50
-    changed-lines-threshold: 1000
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*Settings*.kt'
+      - '**/*Config*.kt'
+      - '**/*Preferences*.kt'
