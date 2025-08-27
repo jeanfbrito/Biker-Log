@@ -98,6 +98,8 @@ jobs:
     needs: build-release
     permissions:
       contents: write
+      discussions: write
+      pull-requests: write
       
     steps:
     - name: Checkout code
