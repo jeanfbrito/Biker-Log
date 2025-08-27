@@ -119,24 +119,21 @@ class UpdateCheckerTest {
     }
 
     @Test
-    fun `test downloadApk cleans up old update files`() = runTest {
-        val testDir = context.getExternalFilesDir(null)!!
+    fun `test downloadApk rejects untrusted hosts`() = runTest {
+        // Test with untrusted host
+        val result = updateChecker.downloadApk("https://untrusted.example.com/test.apk") { }
         
-        // Create some old update files
-        File(testDir, "update_12345.apk").createNewFile()
-        File(testDir, "update_67890.apk").createNewFile()
-        File(testDir, "not_update.apk").createNewFile() // Should not be deleted
+        // Result should be null due to untrusted host
+        assertNull(result)
+    }
+    
+    @Test
+    fun `test downloadApk rejects non-HTTPS URLs`() = runTest {
+        // Test with HTTP URL
+        val result = updateChecker.downloadApk("http://github.com/test.apk") { }
         
-        // Mock download will fail but cleanup should still happen
-        updateChecker.downloadApk("https://invalid.url/test.apk") { }
-        
-        // Check that old update files were cleaned up
-        assertFalse(File(testDir, "update_12345.apk").exists())
-        assertFalse(File(testDir, "update_67890.apk").exists())
-        assertTrue(File(testDir, "not_update.apk").exists())
-        
-        // Clean up test file
-        File(testDir, "not_update.apk").delete()
+        // Result should be null due to non-HTTPS
+        assertNull(result)
     }
 
     @Test

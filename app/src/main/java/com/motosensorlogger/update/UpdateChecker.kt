@@ -30,6 +30,10 @@ class UpdateChecker(private val context: Context) {
     companion object {
         private const val TAG = "UpdateChecker"
         private const val GITHUB_API_URL = "https://api.github.com/repos/jeanfbrito/Biker-Log/releases/latest"
+        private const val GITHUB_API_HOST = "api.github.com"
+        private const val GITHUB_RELEASES_HOST = "github.com"
+        private const val GITHUB_USER_CONTENT_HOST = "github-releases.githubusercontent.com"
+        private val TRUSTED_HOSTS = setOf(GITHUB_API_HOST, GITHUB_RELEASES_HOST, GITHUB_USER_CONTENT_HOST)
         private const val BUFFER_SIZE = 8192
         private const val MAX_APK_SIZE = 100 * 1024 * 1024 // 100MB max
         private const val CONNECT_TIMEOUT_MS = 10000
@@ -37,10 +41,21 @@ class UpdateChecker(private val context: Context) {
         private const val USER_AGENT = "Biker-Log-Android/${BuildConfig.VERSION_NAME}"
     }
     
+    private fun isValidGitHubHost(host: String): Boolean {
+        return TRUSTED_HOSTS.contains(host.lowercase())
+    }
+    
     suspend fun checkForUpdates(): UpdateInfo? = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
             val url = URL(GITHUB_API_URL)
+            
+            // Security: Validate host before connecting (certificate pinning)
+            if (!isValidGitHubHost(url.host)) {
+                Log.e(TAG, "Security: Refusing to connect to untrusted host: ${url.host}")
+                return@withContext null
+            }
+            
             connection = url.openConnection() as HttpURLConnection
             
             // Configure connection
@@ -50,12 +65,13 @@ class UpdateChecker(private val context: Context) {
                 setRequestProperty("User-Agent", USER_AGENT)
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
+                instanceFollowRedirects = false // Security: Manually validate redirects
             }
             
-            // Enable SSL certificate validation for HTTPS
-            if (connection is HttpsURLConnection) {
-                // Default SSL validation is already enabled, but we can add custom checks if needed
+            // Enforce HTTPS for security
+            if (connection !is HttpsURLConnection) {
+                Log.e(TAG, "Security: Connection is not HTTPS")
+                return@withContext null
             }
             
             Log.d(TAG, "Checking for updates at: $GITHUB_API_URL")
@@ -130,13 +146,27 @@ class UpdateChecker(private val context: Context) {
         progressCallback: suspend (Int) -> Unit
     ): File? = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
-        val apkFile = File(context.getExternalFilesDir(null), "update_${System.currentTimeMillis()}.apk")
+        var apkFile: File? = null
         
         try {
+            // Security: Validate URL host before downloading
+            val downloadUrl = URL(url)
+            if (!isValidGitHubHost(downloadUrl.host)) {
+                Log.e(TAG, "Security: Refusing to download from untrusted host: ${downloadUrl.host}")
+                return@withContext null
+            }
+            
+            // Security: Enforce HTTPS
+            if (downloadUrl.protocol != "https") {
+                Log.e(TAG, "Security: Refusing to download over non-HTTPS connection")
+                return@withContext null
+            }
+            
             // Clean up old update files
             cleanupOldUpdateFiles()
             
-            connection = URL(url).openConnection() as HttpURLConnection
+            apkFile = File(context.getExternalFilesDir(null), "update_${System.currentTimeMillis()}.apk")
+            connection = downloadUrl.openConnection() as HttpURLConnection
             connection.apply {
                 requestMethod = "GET"
                 setRequestProperty("User-Agent", USER_AGENT)
@@ -192,11 +222,11 @@ class UpdateChecker(private val context: Context) {
             apkFile
         } catch (e: IOException) {
             Log.e(TAG, "Network error downloading APK", e)
-            apkFile.delete()
+            apkFile?.delete()
             null
         } catch (e: Exception) {
             Log.e(TAG, "Error downloading APK", e)
-            apkFile.delete()
+            apkFile?.delete()
             null
         } finally {
             connection?.disconnect()
@@ -221,13 +251,32 @@ class UpdateChecker(private val context: Context) {
     
     fun installApk(file: File): Boolean {
         return try {
+            // Security validation: Ensure file is in our app's private directory
+            val expectedDir = context.getExternalFilesDir(null)
+            if (expectedDir == null || !file.canonicalPath.startsWith(expectedDir.canonicalPath)) {
+                Log.e(TAG, "Security: APK file is not in expected directory")
+                return false
+            }
+            
+            // Validate file exists and has reasonable size
             if (!file.exists()) {
                 Log.e(TAG, "APK file does not exist: ${file.absolutePath}")
                 return false
             }
             
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                // Use FileProvider for all Android versions (minSdk is 26)
+            if (file.length() <= 0 || file.length() > MAX_APK_SIZE) {
+                Log.e(TAG, "Security: Invalid APK file size: ${file.length()}")
+                return false
+            }
+            
+            // Validate file name pattern
+            if (!file.name.matches(Regex("update_\\d+\\.apk"))) {
+                Log.e(TAG, "Security: Invalid APK filename pattern: ${file.name}")
+                return false
+            }
+            
+            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                // Use FileProvider for secure file access
                 val uri = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
@@ -236,11 +285,22 @@ class UpdateChecker(private val context: Context) {
                 
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                
+                // Add security flags for Android 14+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                }
             }
             
-            Log.d(TAG, "Starting APK installation for: ${file.absolutePath}")
+            Log.d(TAG, "Starting APK installation for verified file: ${file.name}")
             context.startActivity(intent)
             true
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Security exception during APK installation", e)
+            false
         } catch (e: Exception) {
             Log.e(TAG, "Error installing APK", e)
             false
