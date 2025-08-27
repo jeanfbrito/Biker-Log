@@ -275,7 +275,7 @@ class UpdateChecker(private val context: Context) {
                 return false
             }
             
-            val intent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
                 // Use FileProvider for secure file access
                 val uri = FileProvider.getUriForFile(
                     context,
