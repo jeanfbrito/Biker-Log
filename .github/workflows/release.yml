@@ -61,45 +61,50 @@ jobs:
           # Get commit messages since last tag
           if [ "${{ steps.version.outputs.tag }}" = "v0.0.1" ]; then
             # First release - get last 10 commits
-            COMMITS=$(git log --oneline -10 --pretty="- %s")
+            git log --oneline -10 --pretty="- %s" > commits.txt
           else
             LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
             if [ -n "$LAST_TAG" ]; then
-              COMMITS=$(git log ${LAST_TAG}..HEAD --oneline --pretty="- %s")
+              git log ${LAST_TAG}..HEAD --oneline --pretty="- %s" > commits.txt
             else
-              COMMITS=$(git log --oneline -10 --pretty="- %s")
+              git log --oneline -10 --pretty="- %s" > commits.txt
             fi
           fi
           
-          # Escape for GitHub Actions
-          COMMITS="${COMMITS//'%'/'%25'}"
-          COMMITS="${COMMITS//$'\n'/'%0A'}"
-          COMMITS="${COMMITS//$'\r'/'%0D'}"
+          # Clean up and format commits
+          if [ ! -s commits.txt ]; then
+            echo "No new commits since last release." > commits.txt
+          fi
+      
+      - name: Create release notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## 🚀 Development Build
           
-          echo "commits=$COMMITS" >> $GITHUB_OUTPUT
+          **Version:** ${{ steps.version.outputs.version }}
+          **Build Date:** ${{ github.event.head_commit.timestamp }}
+          **Commit:** ${{ github.sha }}
+          
+          ### 📝 Changes in this build:
+          EOF
+          cat commits.txt >> release_notes.md
+          cat >> release_notes.md << 'EOF'
+          
+          ### 📱 Installation:
+          1. Download the APK file below
+          2. Enable "Install from unknown sources" in your Android settings
+          3. Open the downloaded APK to install
+          
+          ### ⚠️ Note:
+          This is a development build. For production use, please wait for official releases.
+          EOF
       
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Dev Build ${{ steps.version.outputs.tag }}
-          body: |
-            ## 🚀 Development Build
-            
-            **Version:** ${{ steps.version.outputs.version }}
-            **Build Date:** ${{ github.event.head_commit.timestamp }}
-            **Commit:** ${{ github.sha }}
-            
-            ### 📝 Changes in this build:
-            ${{ steps.commits.outputs.commits }}
-            
-            ### 📱 Installation:
-            1. Download the APK file below
-            2. Enable "Install from unknown sources" in your Android settings
-            3. Open the downloaded APK to install
-            
-            ### ⚠️ Note:
-            This is a development build. For production use, please wait for official releases.
+          body_path: release_notes.md
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: false
