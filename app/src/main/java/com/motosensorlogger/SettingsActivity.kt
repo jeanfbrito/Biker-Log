@@ -14,11 +14,15 @@ import com.motosensorlogger.settings.SettingsManager
 import android.content.Intent
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import com.motosensorlogger.update.UpdateChecker
+import com.motosensorlogger.update.UpdateInfo
+import android.app.ProgressDialog
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsManager: SettingsManager
     private lateinit var bottomNavigation: BottomNavigationView
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private lateinit var updateChecker: UpdateChecker
 
     // UI elements
     private lateinit var calibrationDurationSeekBar: SeekBar
@@ -40,6 +44,7 @@ class SettingsActivity : AppCompatActivity() {
         setupBottomNavigation()
         
         settingsManager = SettingsManager.getInstance(this)
+        updateChecker = UpdateChecker(this)
 
         // Get the content container from the layout
         val mainLayout = findViewById<LinearLayout>(R.id.settingsContent)
@@ -83,6 +88,12 @@ class SettingsActivity : AppCompatActivity() {
 
         // Reset button
         addResetButton(mainLayout)
+
+        addDivider(mainLayout)
+        
+        // App Updates
+        addSectionTitle(mainLayout, "APP UPDATES")
+        addUpdateButton(mainLayout)
 
         // Hide action bar since we're using bottom navigation
         supportActionBar?.hide()
@@ -544,6 +555,127 @@ class SettingsActivity : AppCompatActivity() {
             }
 
         layout.addView(buttonContainer)
+    }
+    
+    private fun addUpdateButton(layout: LinearLayout) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 10, 0, 20)
+        }
+        
+        // Current version display
+        val versionText = TextView(this).apply {
+            text = "Current version: v${BuildConfig.VERSION_NAME}"
+            textSize = 14f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            gravity = android.view.Gravity.CENTER
+        }
+        container.addView(versionText)
+        
+        // Update button
+        val button = Button(this).apply {
+            text = "CHECK FOR UPDATES"
+            textSize = 14f
+            setBackgroundColor(Color.parseColor("#0066CC"))
+            setTextColor(Color.WHITE)
+            setPadding(30, 20, 30, 20)
+            
+            setOnClickListener {
+                checkForUpdates()
+            }
+        }
+        
+        val buttonContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+            addView(button)
+        }
+        
+        container.addView(buttonContainer)
+        layout.addView(container)
+    }
+    
+    private fun checkForUpdates() {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Checking for updates...")
+            setCancelable(false)
+            show()
+        }
+        
+        scope.launch {
+            try {
+                val updateInfo = updateChecker.checkForUpdates()
+                progressDialog.dismiss()
+                
+                if (updateInfo != null) {
+                    showUpdateDialog(updateInfo)
+                } else {
+                    Toast.makeText(
+                        this@SettingsActivity, 
+                        "You're running the latest version!", 
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Toast.makeText(
+                    this@SettingsActivity,
+                    "Failed to check for updates: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+    
+    private fun showUpdateDialog(updateInfo: UpdateInfo) {
+        AlertDialog.Builder(this)
+            .setTitle("Update Available")
+            .setMessage("Version ${updateInfo.version} is available.\nDo you want to download and install it?")
+            .setPositiveButton("Update") { _, _ ->
+                downloadAndInstallUpdate(updateInfo)
+            }
+            .setNegativeButton("Not Now", null)
+            .show()
+    }
+    
+    private fun downloadAndInstallUpdate(updateInfo: UpdateInfo) {
+        val progressDialog = ProgressDialog(this).apply {
+            setTitle("Downloading Update")
+            setMessage("Please wait...")
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            setCancelable(false)
+            show()
+        }
+        
+        scope.launch {
+            try {
+                val apkFile = updateChecker.downloadApk(updateInfo.downloadUrl) { progress ->
+                    runOnUiThread {
+                        progressDialog.progress = progress
+                    }
+                }
+                
+                progressDialog.dismiss()
+                
+                if (apkFile != null) {
+                    updateChecker.installApk(apkFile)
+                } else {
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        "Failed to download update",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Exception) {
+                progressDialog.dismiss()
+                Toast.makeText(
+                    this@SettingsActivity,
+                    "Update failed: ${e.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
     }
 
     private fun addDivider(layout: LinearLayout) {

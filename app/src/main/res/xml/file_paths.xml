@@ -3,4 +3,7 @@
     <external-files-path
         name="logs"
         path="Documents/MotoSensorLogs/" />
+    <external-files-path
+        name="downloads"
+        path="." />
 </paths>
