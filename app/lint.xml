@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Locale Issues -->
+    <issue id="DefaultLocale" severity="error">
+        <ignore regexp=".*test.*" />
+    </issue>
+    
+    <!-- String Formatting -->
+    <issue id="StringFormatInvalid" severity="error" />
+    <issue id="StringFormatMatches" severity="error" />
+    <issue id="StringFormatCount" severity="error" />
+    
+    <!-- Performance -->
+    <issue id="UseSparseArrays" severity="warning" />
+    <issue id="UseValueOf" severity="warning" />
+    
+    <!-- Correctness -->
+    <issue id="HardcodedText" severity="warning">
+        <ignore regexp=".*test.*" />
+    </issue>
+    
+    <!-- Security -->
+    <issue id="HardcodedDebugMode" severity="error" />
+    <issue id="ExportedService" severity="error" />
+    
+    <!-- Internationalization -->
+    <issue id="SetTextI18n" severity="warning" />
+    <issue id="SimpleDateFormat" severity="warning" />
+    
+    <!-- Code Quality -->
+    <issue id="UnusedResources" severity="warning" />
+    <issue id="Deprecated" severity="warning" />
+</lint>

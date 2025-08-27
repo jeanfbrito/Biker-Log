@@ -9,12 +9,15 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.motosensorlogger.settings.SettingsManager
+import android.content.Intent
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsManager: SettingsManager
+    private lateinit var bottomNavigation: BottomNavigationView
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     // UI elements
@@ -30,20 +33,17 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
 
+        // Initialize bottom navigation
+        bottomNavigation = findViewById(R.id.bottomNavigation)
+        setupBottomNavigation()
+        
         settingsManager = SettingsManager.getInstance(this)
 
-        // Create UI
-        val scrollView =
-            ScrollView(this).apply {
-                setBackgroundColor(Color.parseColor("#1a1a1a"))
-            }
-
-        val mainLayout =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(20, 20, 20, 20)
-            }
+        // Get the content container from the layout
+        val mainLayout = findViewById<LinearLayout>(R.id.settingsContent)
+        mainLayout.removeAllViews()
 
         // Title
         addSectionTitle(mainLayout, "CALIBRATION SETTINGS")
@@ -84,14 +84,8 @@ class SettingsActivity : AppCompatActivity() {
         // Reset button
         addResetButton(mainLayout)
 
-        scrollView.addView(mainLayout)
-        setContentView(scrollView)
-
-        // Setup action bar
-        supportActionBar?.apply {
-            setDisplayHomeAsUpEnabled(true)
-            title = "Settings"
-        }
+        // Hide action bar since we're using bottom navigation
+        supportActionBar?.hide()
 
         // Load current settings
         loadCurrentSettings()
@@ -636,14 +630,35 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
+    private fun setupBottomNavigation() {
+        bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.navigation_recording -> {
+                    // Navigate back to main activity
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
+                    finish()
+                    true
+                }
+                R.id.navigation_telemetry -> {
+                    // Launch telemetry activity
+                    val intent = Intent(this, TelemetryActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
+                    finish()
+                    true
+                }
+                R.id.navigation_settings -> {
+                    // Already on settings tab
+                    true
+                }
+                else -> false
             }
-            else -> super.onOptionsItemSelected(item)
         }
+
+        // Set settings as selected
+        bottomNavigation.selectedItemId = R.id.navigation_settings
     }
 
     override fun onDestroy() {

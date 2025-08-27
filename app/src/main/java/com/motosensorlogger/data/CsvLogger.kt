@@ -59,64 +59,63 @@ class CsvLogger(private val context: Context) {
             val deviceStr = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
 
             // Write complete header with calibration section if provided
-            val completeHeader =
-                """
-                                                                                                # Moto Sensor Log v1.1
-                                                                                                # Device: $deviceStr  
-                                                                                                # Date: $dateStr
-                                                                                                ${calibrationHeader.ifEmpty {
-                    """# Calibration: {
+            val completeHeader = """
+# Moto Sensor Log v1.1
+# Device: $deviceStr
+# Date: $dateStr
+${calibrationHeader.ifEmpty {
+"""# Calibration: {
 #   "status": "uncalibrated",
 #   "warning": "No calibration performed. Sensor data is in device coordinates."
 # }"""
-                }}
-                                                                                                # Schema: {
-                                                                                                #   "version": "1.0",
-                                                                                                #   "events": {
-                                                                                                #     "GPS": {
-                                                                                                #       "description": "GPS positioning data",
-                                                                                                #       "frequency": "5-10Hz (adaptive)",
-                                                                                                #       "fields": [
-                                                                                                #         {"name": "data1", "type": "double", "unit": "degrees", "description": "latitude"},
-                                                                                                #         {"name": "data2", "type": "double", "unit": "degrees", "description": "longitude"},
-                                                                                                #         {"name": "data3", "type": "double", "unit": "meters", "description": "altitude_GPS"},
-                                                                                                #         {"name": "data4", "type": "float", "unit": "m/s", "description": "speed"},
-                                                                                                #         {"name": "data5", "type": "float", "unit": "degrees", "description": "bearing"},
-                                                                                                #         {"name": "data6", "type": "float", "unit": "meters", "description": "accuracy"}
-                                                                                                #       ]
-                                                                                                #     },
-                                                                                                #     "IMU": {
-                                                                                                #       "description": "Inertial Measurement Unit data",
-                                                                                                #       "frequency": "50-100Hz",
-                                                                                                #       "fields": [
-                                                                                                #         {"name": "data1", "type": "float", "unit": "m/s²", "description": "accel_X"},
-                                                                                                #         {"name": "data2", "type": "float", "unit": "m/s²", "description": "accel_Y"},
-                                                                                                #         {"name": "data3", "type": "float", "unit": "m/s²", "description": "accel_Z"},
-                                                                                                #         {"name": "data4", "type": "float", "unit": "°/s", "description": "gyro_roll"},
-                                                                                                #         {"name": "data5", "type": "float", "unit": "°/s", "description": "gyro_pitch"},
-                                                                                                #         {"name": "data6", "type": "float", "unit": "°/s", "description": "gyro_yaw"}
-                                                                                                #       ]
-                                                                                                #     },
-                                                                                                #     "BARO": {
-                                                                                                #       "description": "Barometric pressure and altitude",
-                                                                                                #       "frequency": "10-25Hz",
-                                                                                                #       "fields": [
-                                                                                                #         {"name": "data1", "type": "float", "unit": "meters", "description": "altitude_baro"},
-                                                                                                #         {"name": "data2", "type": "float", "unit": "hPa", "description": "pressure"}
-                                                                                                #       ]
-                                                                                                #     },
-                                                                                                #     "MAG": {
-                                                                                                #       "description": "Magnetometer data",
-                                                                                                #       "frequency": "10-25Hz",
-                                                                                                #       "fields": [
-                                                                                                #         {"name": "data1", "type": "float", "unit": "μT", "description": "mag_X"},
-                                                                                                #         {"name": "data2", "type": "float", "unit": "μT", "description": "mag_Y"},
-                                                                                                #         {"name": "data3", "type": "float", "unit": "μT", "description": "mag_Z"}
-                                                                                                #       ]
-                                                                                                #     }
-                                                                                                #   }
-                                                                                                # }
-                                                                                                timestamp,sensor_type,data1,data2,data3,data4,data5,data6
+}}
+# Schema: {
+#   "version": "1.0",
+#   "events": {
+#     "GPS": {
+#       "description": "GPS positioning data",
+#       "frequency": "5-10Hz (adaptive)",
+#       "fields": [
+#         {"name": "data1", "type": "double", "unit": "degrees", "description": "latitude"},
+#         {"name": "data2", "type": "double", "unit": "degrees", "description": "longitude"},
+#         {"name": "data3", "type": "double", "unit": "meters", "description": "altitude_GPS"},
+#         {"name": "data4", "type": "float", "unit": "m/s", "description": "speed"},
+#         {"name": "data5", "type": "float", "unit": "degrees", "description": "bearing"},
+#         {"name": "data6", "type": "float", "unit": "meters", "description": "accuracy"}
+#       ]
+#     },
+#     "IMU": {
+#       "description": "Inertial Measurement Unit data",
+#       "frequency": "50-100Hz",
+#       "fields": [
+#         {"name": "data1", "type": "float", "unit": "m/s²", "description": "accel_X"},
+#         {"name": "data2", "type": "float", "unit": "m/s²", "description": "accel_Y"},
+#         {"name": "data3", "type": "float", "unit": "m/s²", "description": "accel_Z"},
+#         {"name": "data4", "type": "float", "unit": "°/s", "description": "gyro_roll"},
+#         {"name": "data5", "type": "float", "unit": "°/s", "description": "gyro_pitch"},
+#         {"name": "data6", "type": "float", "unit": "°/s", "description": "gyro_yaw"}
+#       ]
+#     },
+#     "BARO": {
+#       "description": "Barometric pressure and altitude",
+#       "frequency": "10-25Hz",
+#       "fields": [
+#         {"name": "data1", "type": "float", "unit": "meters", "description": "altitude_baro"},
+#         {"name": "data2", "type": "float", "unit": "hPa", "description": "pressure"}
+#       ]
+#     },
+#     "MAG": {
+#       "description": "Magnetometer data",
+#       "frequency": "10-25Hz",
+#       "fields": [
+#         {"name": "data1", "type": "float", "unit": "μT", "description": "mag_X"},
+#         {"name": "data2", "type": "float", "unit": "μT", "description": "mag_Y"},
+#         {"name": "data3", "type": "float", "unit": "μT", "description": "mag_Z"}
+#       ]
+#     }
+#   }
+# }
+timestamp,sensor_type,data1,data2,data3,data4,data5,data6
                 """.trimIndent()
 
             writer?.write(completeHeader)

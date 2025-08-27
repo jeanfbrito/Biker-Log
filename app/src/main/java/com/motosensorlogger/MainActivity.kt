@@ -175,16 +175,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                 R.id.navigation_telemetry -> {
                     // Launch telemetry activity
                     val intent = Intent(this, TelemetryActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    // Don't keep telemetry selected when returning
-                    false
+                    finish()
+                    true
                 }
                 R.id.navigation_settings -> {
                     // Launch settings activity
                     val intent = Intent(this, SettingsActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    // Don't keep settings selected when returning
-                    false
+                    finish()
+                    true
                 }
                 else -> false
             }
