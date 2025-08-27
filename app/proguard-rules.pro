@@ -10,6 +10,14 @@
 -keep class com.opencsv.** { *; }
 -keepattributes *Annotation*
 
+# OpenCSV dependencies - ignore missing logging libraries
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.slf4j.**
+-dontwarn org.apache.commons.logging.**
+
+# Keep Apache Commons Logging classes if they exist
+-keep class org.apache.commons.logging.** { *; }
+
 # Coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}

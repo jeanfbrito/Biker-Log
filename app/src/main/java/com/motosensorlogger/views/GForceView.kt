@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
+import com.motosensorlogger.filters.TelemetryCurveRenderer
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -33,7 +34,7 @@ class GForceView
         var showTrail = true
             set(value) {
                 field = value
-                if (!value) trailPoints.clear()
+                if (!value) curveRenderer.clearTrail()
                 invalidate()
             }
 
@@ -64,14 +65,12 @@ class GForceView
         var verticalLabelColor = Color.BLUE
         var trailColor = Color.argb(255, 255, 165, 0)
 
-        // Trail settings
-        private val trailPoints = mutableListOf<Triple<Float, Float, Float>>()
-        var maxTrailPoints = 20
+        // Professional trail renderer with smooth curves
+        private val curveRenderer = TelemetryCurveRenderer()
+        var maxTrailPoints = 50
             set(value) {
                 field = value
-                while (trailPoints.size > value && trailPoints.isNotEmpty()) {
-                    trailPoints.removeAt(0)
-                }
+                // The curve renderer handles its own point management
             }
 
         // Paint objects
@@ -105,7 +104,10 @@ class GForceView
 
         private val trailPaint =
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.FILL
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                strokeWidth = 3f
             }
 
         private val barPaint =
@@ -125,12 +127,13 @@ class GForceView
             gForceY = y.coerceIn(-maxGForce, maxGForce)
             gForceZ = z.coerceIn(-maxGForce, maxGForce)
 
-            // Add to trail if enabled
-            if (showTrail) {
-                trailPoints.add(Triple(gForceX, gForceY, gForceZ))
-                if (trailPoints.size > maxTrailPoints) {
-                    trailPoints.removeAt(0)
-                }
+            // Add to professional trail renderer if enabled
+            if (showTrail && width > 0 && height > 0) {
+                // Convert G-force coordinates to normalized coordinates (0-1 range)
+                // Will be converted to screen coordinates during drawing
+                val normalizedX = (gForceX / maxGForce + 1f) / 2f // -1 to 1 becomes 0 to 1
+                val normalizedY = (gForceY / maxGForce + 1f) / 2f // -1 to 1 becomes 0 to 1
+                curveRenderer.addPoint(normalizedX, normalizedY)
             }
 
             invalidate()
@@ -161,7 +164,7 @@ class GForceView
          * Clear the trail history
          */
         fun clearTrail() {
-            trailPoints.clear()
+            curveRenderer.clearTrail()
             invalidate()
         }
 
@@ -228,18 +231,29 @@ class GForceView
                 canvas.drawText("BRAKE", centerX, centerY + radius + 30, textPaint)
             }
 
-            // Draw trail
-            if (showTrail) {
-                trailPoints.forEachIndexed { index, point ->
-                    val alpha = 100 * index / trailPoints.size
-                    trailPaint.color = Color.argb(alpha, Color.red(trailColor), Color.green(trailColor), Color.blue(trailColor))
-
-                    val x = centerX + (point.first * radius / maxGForce)
-                    val y = centerY - (point.second * radius / maxGForce)
-                    val size = 5f + (5f * index / trailPoints.size)
-
-                    canvas.drawCircle(x, y, size, trailPaint)
+            // Draw professional smooth trail with fading effect
+            if (showTrail && curveRenderer.getTrailPointCount() > 1) {
+                val trailSegments = curveRenderer.getFadingTrailSegmentsTransformed(
+                    centerX, centerY, radius, tension = 0.3f
+                )
+                
+                trailSegments.forEach { (path, opacity) ->
+                    trailPaint.color = Color.argb(
+                        (255 * opacity).toInt(),
+                        Color.red(trailColor),
+                        Color.green(trailColor),
+                        Color.blue(trailColor)
+                    )
+                    trailPaint.style = Paint.Style.STROKE
+                    trailPaint.strokeWidth = 4f * opacity + 1f
+                    trailPaint.strokeCap = Paint.Cap.ROUND
+                    trailPaint.strokeJoin = Paint.Join.ROUND
+                    
+                    canvas.drawPath(path, trailPaint)
                 }
+                
+                // Reset paint style for other drawing operations
+                trailPaint.style = Paint.Style.FILL
             }
 
             // Draw current G-force point

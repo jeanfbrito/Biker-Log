@@ -40,7 +40,7 @@ jobs:
         echo "Building version: $VERSION"
     
     - name: Set up JDK
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: ${{ env.JAVA_DISTRIBUTION }}
@@ -106,13 +106,13 @@ jobs:
         fetch-depth: 0
     
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: release-apk-${{ needs.build-release.outputs.version }}
         path: ./artifacts
     
     - name: Download checksums
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: checksums-${{ needs.build-release.outputs.version }}
         path: ./artifacts

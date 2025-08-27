@@ -19,7 +19,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.motosensorlogger.data.SensorDataFilter
+import com.motosensorlogger.filters.FilterFactory
+import com.motosensorlogger.filters.AdaptiveFilterChain
 import com.motosensorlogger.services.SensorLoggerService
 import com.motosensorlogger.views.BarInclinometerView
 import com.motosensorlogger.views.GForceView
@@ -37,8 +38,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     private var gyroscope: Sensor? = null
     private var magnetometer: Sensor? = null
     
-    // Advanced noise filter for telemetry display
-    private lateinit var telemetryFilter: SensorDataFilter
+    // Professional filter chain for smooth telemetry display
+    private lateinit var imuFilter: AdaptiveFilterChain
+    private lateinit var gravityFilter: AdaptiveFilterChain
 
     // Custom views
     private lateinit var inclinometerView: InclinometerView
@@ -74,8 +76,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     private var updateJob: Job? = null
     private val updateScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // Low-pass filter alpha
-    private val ALPHA = 0.8f
+    // Professional filter performance metrics
+    private var lastFilterLatencyMs: Float = 0f
+    private var filterPerformanceCounter: Int = 0
 
     // Service binding
     private var sensorService: SensorLoggerService? = null
@@ -117,14 +120,10 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         bottomNavigation = findViewById(R.id.bottomNavigation)
         setupBottomNavigation()
         
-        // Initialize advanced noise filter for smooth telemetry display
-        // Use slightly less aggressive filtering for telemetry to maintain responsiveness
-        telemetryFilter = SensorDataFilter(
-            windowSize = 7,  // Slightly larger window for smoother display
-            outlierSigmaThreshold = 2.5f,  // More aggressive outlier removal for display
-            enableOutlierDetection = true,
-            enableMovingAverage = true
-        )
+        // Initialize professional filter chains for smooth, GoPro/Garmin-style telemetry
+        // Separate filters for IMU data and gravity vector for optimal performance
+        imuFilter = FilterFactory.getMotorcycleTelemetryFilter()
+        gravityFilter = FilterFactory.getTelemetryFilter(AdaptiveFilterChain.SensorType.IMU_ACCELEROMETER)
 
         // Get the content container from the layout
         val telemetryContent = findViewById<LinearLayout>(R.id.telemetryContent)
@@ -218,8 +217,9 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
                     inclinometerView.resetCalibration()
                     barInclinometerView.resetCalibration()
                     motoInclinometerView.resetCalibration()
-                    // Also reset the noise filter to clear any accumulated data
-                    telemetryFilter.reset()
+                    // Also reset the professional filters to clear any accumulated data
+                    imuFilter.reset()
+                    gravityFilter.reset()
                     showCalibrationStatus(false)
                 }
             }
@@ -600,28 +600,33 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                // For telemetry display, we don't filter accelerometer alone
-                // We need both accel and gyro for proper IMU filtering
-                // So we'll use raw values here and rely on the low-pass filter below
                 val rawValues = event.values
+                val timestamp = System.nanoTime()
                 
-                // Apply low-pass filter to isolate gravity (on raw values)
-                gravity[0] = ALPHA * gravity[0] + (1 - ALPHA) * rawValues[0]
-                gravity[1] = ALPHA * gravity[1] + (1 - ALPHA) * rawValues[1]
-                gravity[2] = ALPHA * gravity[2] + (1 - ALPHA) * rawValues[2]
+                // Apply professional filtering to raw accelerometer data
+                val filteredAccel = imuFilter.filter(rawValues, timestamp)
+                
+                // Use separate gravity filter for smoother attitude calculation
+                // This provides the professional smoothness for pitch/roll display
+                val filteredGravity = gravityFilter.filter(rawValues, timestamp)
+                
+                // Update gravity vector with filtered values for smooth attitude
+                gravity[0] = filteredGravity[0]
+                gravity[1] = filteredGravity[1]
+                gravity[2] = filteredGravity[2]
 
-                // Remove gravity to get linear acceleration
-                linearAcceleration[0] = rawValues[0] - gravity[0]
-                linearAcceleration[1] = rawValues[1] - gravity[1]
-                linearAcceleration[2] = rawValues[2] - gravity[2]
+                // Remove gravity from filtered accelerometer to get clean linear acceleration
+                linearAcceleration[0] = filteredAccel[0] - gravity[0]
+                linearAcceleration[1] = filteredAccel[1] - gravity[1]
+                linearAcceleration[2] = filteredAccel[2] - gravity[2]
 
-                // Convert to G-force (divide by 9.81)
+                // Convert to G-force (divide by 9.81) with professional filtering applied
                 gForceX = linearAcceleration[0] / 9.81f
                 gForceY = linearAcceleration[1] / 9.81f
-                gForceZ = rawValues[2] / 9.81f // Use raw Z for vertical G including gravity
+                gForceZ = filteredAccel[2] / 9.81f // Use filtered Z for smooth vertical G including gravity
 
-                // Calculate pitch and roll from gravity vector
-                // Pitch: rotation around X axis (forward/backward tilt)
+                // Calculate pitch and roll from professionally filtered gravity vector
+                // This provides the smooth, stable attitude display like GoPro/Garmin overlays
                 pitch =
                     Math.toDegrees(
                         atan2(
@@ -630,10 +635,23 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
                         ),
                     ).toFloat()
 
-                // Roll: rotation around Y axis (left/right lean)
+                // Roll: rotation around Y axis (left/right lean) - professionally smoothed
                 roll = Math.toDegrees(atan2(-gravity[0].toDouble(), gravity[2].toDouble())).toFloat()
 
-                // No limits - full range of motion
+                // No limits - full range of motion with professional filtering applied
+                
+                // Monitor filter performance to ensure <5ms target
+                filterPerformanceCounter++
+                if (filterPerformanceCounter % 100 == 0) { // Check every 100 samples
+                    val totalLatency = imuFilter.getLatencyMs() + gravityFilter.getLatencyMs()
+                    lastFilterLatencyMs = totalLatency
+                    
+                    // Log warning if we exceed our 5ms target
+                    if (totalLatency > 5f) {
+                        android.util.Log.w("TelemetryFilter", 
+                            "Professional filter latency: ${totalLatency}ms (target: <5ms)")
+                    }
+                }
             }
         }
     }
@@ -680,18 +698,19 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        // Reset filter when resuming to avoid stale data
-        telemetryFilter.reset()
+        // Reset professional filters when resuming to avoid stale data
+        imuFilter.reset()
+        gravityFilter.reset()
         
-        // Register sensor listeners
+        // Register sensor listeners with faster rate for professional filtering
         accelerometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
         gyroscope?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
         magnetometer?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
         }
     }
     
