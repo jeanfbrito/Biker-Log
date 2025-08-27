@@ -16,7 +16,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import com.motosensorlogger.update.UpdateChecker
 import com.motosensorlogger.update.UpdateInfo
-import android.app.ProgressDialog
 
 class SettingsActivity : AppCompatActivity() {
     private lateinit var settingsManager: SettingsManager
@@ -597,11 +596,11 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun checkForUpdates() {
-        val progressDialog = ProgressDialog(this).apply {
-            setMessage("Checking for updates...")
-            setCancelable(false)
-            show()
-        }
+        val progressDialog = AlertDialog.Builder(this)
+            .setMessage("Checking for updates...")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
         
         scope.launch {
             try {
@@ -640,30 +639,59 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     private fun downloadAndInstallUpdate(updateInfo: UpdateInfo) {
-        val progressDialog = ProgressDialog(this).apply {
-            setTitle("Downloading Update")
-            setMessage("Please wait...")
-            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
-            setCancelable(false)
-            show()
+        // Create custom progress dialog
+        val progressView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 30, 50, 30)
+            
+            addView(TextView(this@SettingsActivity).apply {
+                text = "Downloading update..."
+                textSize = 16f
+            })
+            
+            addView(ProgressBar(this@SettingsActivity, null, android.R.attr.progressBarStyleHorizontal).apply {
+                isIndeterminate = false
+                max = 100
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 20, 0, 0)
+                }
+            })
         }
+        
+        val progressBar = progressView.getChildAt(1) as ProgressBar
+        
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("Downloading Update")
+            .setView(progressView)
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
         
         scope.launch {
             try {
                 val apkFile = updateChecker.downloadApk(updateInfo.downloadUrl) { progress ->
-                    runOnUiThread {
-                        progressDialog.progress = progress
-                    }
+                    // Progress callback is already on Main thread from UpdateChecker
+                    progressBar.progress = progress
                 }
                 
                 progressDialog.dismiss()
                 
                 if (apkFile != null) {
-                    updateChecker.installApk(apkFile)
+                    val installed = updateChecker.installApk(apkFile)
+                    if (!installed) {
+                        Toast.makeText(
+                            this@SettingsActivity,
+                            "Failed to install update. Please check app permissions.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 } else {
                     Toast.makeText(
                         this@SettingsActivity,
-                        "Failed to download update",
+                        "Failed to download update. Please check your network connection.",
                         Toast.LENGTH_LONG
                     ).show()
                 }
