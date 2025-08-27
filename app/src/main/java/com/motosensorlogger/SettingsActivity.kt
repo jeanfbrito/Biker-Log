@@ -638,7 +638,6 @@ class SettingsActivity : AppCompatActivity() {
                     val intent = Intent(this, MainActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    overridePendingTransition(0, 0) // No animation for tab-like navigation
                     finish()
                     true
                 }
@@ -647,7 +646,6 @@ class SettingsActivity : AppCompatActivity() {
                     val intent = Intent(this, TelemetryActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    overridePendingTransition(0, 0) // No animation for tab-like navigation
                     finish()
                     true
                 }

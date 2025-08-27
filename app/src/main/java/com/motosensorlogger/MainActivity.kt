@@ -177,7 +177,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                     val intent = Intent(this, TelemetryActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    overridePendingTransition(0, 0) // No animation for tab-like navigation
                     finish()
                     true
                 }
@@ -186,7 +185,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                     val intent = Intent(this, SettingsActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
                     startActivity(intent)
-                    overridePendingTransition(0, 0) // No animation for tab-like navigation
                     finish()
                     true
                 }
