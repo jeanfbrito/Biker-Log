@@ -1,6 +1,7 @@
 package com.motosensorlogger.calibration
 
 import android.os.Build
+import java.util.Locale
 
 /**
  * Simplified calibration data that stores reference orientation
@@ -40,18 +41,18 @@ data class CalibrationData(
             #   "device": "$deviceModel",
             #   "android_sdk": $androidVersion,
             #   "reference": {
-            #     "gravity": [${referenceGravity.joinToString(", ") { "%.6f".format(it) }}],
-            #     "magnetic": [${referenceMagnetic.joinToString(", ") { "%.6f".format(it) }}],
-            #     "quaternion": [${referenceQuaternion.joinToString(", ") { "%.6f".format(it) }}],
+            #     "gravity": [${referenceGravity.joinToString(", ") { "%.6f".format(Locale.US, it) }}],
+            #     "magnetic": [${referenceMagnetic.joinToString(", ") { "%.6f".format(Locale.US, it) }}],
+            #     "quaternion": [${referenceQuaternion.joinToString(", ") { "%.6f".format(Locale.US, it) }}],
             #     "euler_angles": {
-            #       "pitch": ${"%.2f".format(referencePitch)},
-            #       "roll": ${"%.2f".format(referenceRoll)},
-            #       "azimuth": ${"%.2f".format(referenceAzimuth)}
+            #       "pitch": ${"%.2f".format(Locale.US, referencePitch)},
+            #       "roll": ${"%.2f".format(Locale.US, referenceRoll)},
+            #       "azimuth": ${"%.2f".format(Locale.US, referenceAzimuth)}
             #     },
-            #     "gyro_bias": [${gyroscopeBias.joinToString(", ") { "%.6f".format(it) }}]
+            #     "gyro_bias": [${gyroscopeBias.joinToString(", ") { "%.6f".format(Locale.US, it) }}]
             #   },
             #   "quality": {
-            #     "score": ${"%.1f".format(quality.overallScore)},
+            #     "score": ${"%.1f".format(Locale.US, quality.overallScore)},
             #     "samples": $sampleCount,
             #     "duration_ms": $duration
             #   },

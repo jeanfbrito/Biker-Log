@@ -18,6 +18,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.motosensorlogger.data.SensorDataFilter
 import com.motosensorlogger.services.SensorLoggerService
 import com.motosensorlogger.views.BarInclinometerView
@@ -29,6 +30,7 @@ import kotlin.math.*
 
 class TelemetryActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var sensorManager: SensorManager
+    private lateinit var bottomNavigation: BottomNavigationView
 
     // Sensors
     private var accelerometer: Sensor? = null
@@ -109,6 +111,11 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_telemetry)
+        
+        // Initialize bottom navigation
+        bottomNavigation = findViewById(R.id.bottomNavigation)
+        setupBottomNavigation()
         
         // Initialize advanced noise filter for smooth telemetry display
         // Use slightly less aggressive filtering for telemetry to maintain responsiveness
@@ -119,12 +126,15 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
             enableMovingAverage = true
         )
 
-        // Create layout programmatically
+        // Get the content container from the layout
+        val telemetryContent = findViewById<LinearLayout>(R.id.telemetryContent)
+        
+        // Create layout programmatically inside the content container
         val mainLayout =
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setBackgroundColor(Color.BLACK)
-                setPadding(16, 16, 16, 16)
+                setPadding(0, 0, 0, 0)
             }
 
         // Title for Inclinometer
@@ -466,13 +476,12 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         gForceTextLayout.addView(totalLayout)
         mainLayout.addView(gForceTextLayout)
 
-        setContentView(mainLayout)
+        // Add the main layout to the content container
+        telemetryContent.removeAllViews()
+        telemetryContent.addView(mainLayout)
 
-        // Set up action bar
-        supportActionBar?.apply {
-            setDisplayHomeAsUpEnabled(true)
-            title = "Real-Time Telemetry"
-        }
+        // Hide action bar since we're using bottom navigation
+        supportActionBar?.hide()
 
         // Initialize sensor manager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -636,14 +645,37 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         // Not needed
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home -> {
-                finish()
-                true
+    private fun setupBottomNavigation() {
+        bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.navigation_recording -> {
+                    // Navigate back to main activity
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
+                    overridePendingTransition(0, 0) // No animation for tab-like navigation
+                    finish()
+                    true
+                }
+                R.id.navigation_telemetry -> {
+                    // Already on telemetry tab
+                    true
+                }
+                R.id.navigation_settings -> {
+                    // Launch settings activity
+                    val intent = Intent(this, SettingsActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
+                    overridePendingTransition(0, 0) // No animation for tab-like navigation
+                    finish()
+                    true
+                }
+                else -> false
             }
-            else -> super.onOptionsItemSelected(item)
         }
+
+        // Set telemetry as selected
+        bottomNavigation.selectedItemId = R.id.navigation_telemetry
     }
 
     override fun onResume() {

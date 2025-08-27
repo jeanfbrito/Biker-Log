@@ -85,6 +85,21 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    
+    lint {
+        // Use custom lint configuration
+        lintConfig = file("lint.xml")
+        // Treat these as errors
+        error += "DefaultLocale"
+        error += "StringFormatInvalid"
+        // Check dependencies
+        checkDependencies = true
+        // Abort on error for release builds
+        abortOnError = false // Set to true for CI/CD
+        // Generate HTML report
+        htmlReport = true
+        htmlOutput = file("build/reports/lint-results.html")
+    }
 }
 
 configurations {
