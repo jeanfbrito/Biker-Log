@@ -52,18 +52,24 @@ class RideStatisticsGenerator {
         // Detect special events
         val specialEvents = detectSpecialEvents(sensorData, derivedMetrics)
 
+        val gpsStart = gpsEvents.firstOrNull()
+        val gpsEnd = gpsEvents.lastOrNull()
+        
         return RideStatistics(
-            totalDistance = totalDistance,
-            totalDuration = totalDuration,
-            ridingDuration = ridingDuration,
-            maxSpeed = maxSpeed,
-            avgSpeed = avgSpeed,
-            maxLeanAngle = maxLeanAngle,
-            maxGForce = maxGForce,
-            totalElevationGain = elevationGain,
-            totalElevationLoss = elevationLoss,
-            segmentCount = segments.size,
-            specialEvents = specialEvents
+            duration = totalDuration,
+            distance = totalDistance,
+            averageSpeed = avgSpeed.toDouble(),
+            maxSpeed = maxSpeed.toDouble(),
+            maxLeanAngle = maxLeanAngle.toDouble(),
+            maxAcceleration = derivedMetrics.accelerationStats.maxForward,
+            maxDeceleration = derivedMetrics.accelerationStats.maxBraking,
+            maxLateralG = maxGForce.toDouble(),
+            elevationGain = elevationGain.toDouble(),
+            elevationLoss = elevationLoss.toDouble(),
+            startTime = gpsStart?.timestamp ?: 0L,
+            endTime = gpsEnd?.timestamp ?: 0L,
+            startLocation = gpsStart?.let { GpsLocation(it.latitude, it.longitude, it.altitude, it.accuracy) },
+            endLocation = gpsEnd?.let { GpsLocation(it.latitude, it.longitude, it.altitude, it.accuracy) }
         )
     }
 
@@ -149,7 +155,7 @@ class RideStatisticsGenerator {
     /**
      * Detect special events during the ride
      */
-    private fun detectSpecialEvents(
+    fun detectSpecialEvents(
         sensorData: Map<SensorType, List<SensorEvent>>,
         derivedMetrics: DerivedMetrics
     ): List<DetectedEvent> {
@@ -209,7 +215,7 @@ class RideStatisticsGenerator {
                 val duration = sample.timestamp - eventStart.timestamp
                 if (duration >= MIN_EVENT_DURATION) {
                     val eventType = if (eventStart.acceleration > 0) {
-                        DetectedEvent.EventType.HARD_ACCELERATION
+                        DetectedEvent.EventType.RAPID_ACCELERATION
                     } else {
                         DetectedEvent.EventType.HARD_BRAKING
                     }
@@ -217,9 +223,8 @@ class RideStatisticsGenerator {
                     events.add(DetectedEvent(
                         timestamp = eventStart.timestamp,
                         type = eventType,
-                        confidence = minOf(1f, maxAccel / 8f), // Scale confidence
+                        magnitude = maxAccel.toDouble(),
                         duration = duration,
-                        maxValue = maxAccel,
                         description = "${eventType.name.lowercase().replace('_', ' ')} (${String.format("%.1f", maxAccel)} m/s²)"
                     ))
                 }
@@ -254,10 +259,9 @@ class RideStatisticsGenerator {
                 if (duration >= MIN_EVENT_DURATION) {
                     events.add(DetectedEvent(
                         timestamp = eventStart.timestamp,
-                        type = DetectedEvent.EventType.SHARP_TURN,
-                        confidence = minOf(1f, maxLeanAngle / 60f),
+                        type = DetectedEvent.EventType.AGGRESSIVE_CORNERING,
+                        magnitude = maxLeanAngle.toDouble(),
                         duration = duration,
-                        maxValue = maxLeanAngle,
                         description = "Sharp turn (${String.format("%.1f", maxLeanAngle)}° lean)"
                     ))
                 }
@@ -292,10 +296,9 @@ class RideStatisticsGenerator {
                 if (duration >= MIN_EVENT_DURATION) {
                     events.add(DetectedEvent(
                         timestamp = eventStart.timestamp,
-                        type = DetectedEvent.EventType.AGGRESSIVE_MANEUVER,
-                        confidence = minOf(1f, maxGForce / 3f),
+                        type = DetectedEvent.EventType.AGGRESSIVE_CORNERING,
+                        magnitude = maxGForce.toDouble(),
                         duration = duration,
-                        maxValue = maxGForce,
                         description = "High g-force event (${String.format("%.1f", maxGForce)}g)"
                     ))
                 }
@@ -331,10 +334,9 @@ class RideStatisticsGenerator {
                 if (duration >= MIN_EVENT_DURATION * 2) { // Wheelies need longer duration
                     events.add(DetectedEvent(
                         timestamp = eventStart.timestamp,
-                        type = DetectedEvent.EventType.WHEELIE_DETECTED,
-                        confidence = minOf(1f, maxPitchAngle / 60f),
+                        type = DetectedEvent.EventType.WHEELIE,
+                        magnitude = maxPitchAngle.toDouble(),
                         duration = duration,
-                        maxValue = maxPitchAngle,
                         description = "Possible wheelie (${String.format("%.1f", maxPitchAngle)}° pitch)"
                     ))
                 }

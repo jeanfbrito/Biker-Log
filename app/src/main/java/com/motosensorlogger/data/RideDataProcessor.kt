@@ -350,7 +350,12 @@ class RideDataProcessor {
             cornersCount = 0,
             hardBrakingCount = 0,
             hardAccelerationCount = 0,
-            smoothnessScore = 85.0
+            smoothnessScore = 85.0,
+            leanAngle = emptyList(),
+            gForce = emptyList(),
+            acceleration = emptyList(),
+            velocity = emptyList(),
+            orientation = emptyList()
         )
     }
     

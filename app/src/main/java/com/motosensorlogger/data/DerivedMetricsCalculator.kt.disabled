@@ -63,6 +63,38 @@ class DerivedMetricsCalculator {
         val orientationSamples = calculateOrientations(imuEvents, magEvents, calibrationData)
 
         return DerivedMetrics(
+            leanAngleStats = AngleStatistics(
+                maxLeft = leanAngleSamples.filter { it.rollAngle < 0 }.minOfOrNull { it.rollAngle.toDouble() } ?: 0.0,
+                maxRight = leanAngleSamples.maxOfOrNull { it.rollAngle.toDouble() } ?: 0.0,
+                averageCorneringAngle = leanAngleSamples.map { kotlin.math.abs(it.rollAngle) }.average(),
+                timeAtAngle = emptyMap()
+            ),
+            accelerationStats = AccelerationStatistics(
+                maxForward = accelerationSamples.maxOfOrNull { it.forward.toDouble() } ?: 0.0,
+                maxBraking = accelerationSamples.minOfOrNull { it.forward.toDouble() } ?: 0.0,
+                maxLateral = accelerationSamples.maxOfOrNull { kotlin.math.abs(it.lateral).toDouble() } ?: 0.0,
+                averageAcceleration = accelerationSamples.map { it.forward }.average(),
+                jerkEvents = emptyList()
+            ),
+            elevationProfile = ElevationProfile(
+                minAltitude = 0.0,
+                maxAltitude = 0.0,
+                totalGain = 0.0,
+                totalLoss = 0.0,
+                averageGradient = 0.0,
+                steepestClimb = 0.0,
+                steepestDescent = 0.0
+            ),
+            speedProfile = SpeedProfile(
+                averageSpeed = velocitySamples.map { it.speed }.average(),
+                maxSpeed = velocitySamples.maxOfOrNull { it.speed.toDouble() } ?: 0.0,
+                timeAtSpeed = emptyMap(),
+                accelerationPhases = emptyList()
+            ),
+            cornersCount = leanAngleSamples.count { kotlin.math.abs(it.rollAngle) > 15.0 },
+            hardBrakingCount = accelerationSamples.count { it.forward < -3.0 },
+            hardAccelerationCount = accelerationSamples.count { it.forward > 3.0 },
+            smoothnessScore = 85.0,
             leanAngle = leanAngleSamples,
             gForce = gForceSamples,
             acceleration = accelerationSamples,

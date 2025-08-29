@@ -139,7 +139,7 @@ class RideSegmentDetector {
             boundaries.add(SegmentBoundary(
                 timestamp = windows.last().endTime,
                 fromType = currentSegmentType,
-                toType = RideSegment.SegmentType.UNKNOWN,
+                toType = RideSegment.SegmentType.STOP,
                 confidence = 1.0f
             ))
         }
@@ -172,9 +172,9 @@ class RideSegmentDetector {
             )
 
             segments.add(RideSegment(
-                id = i,
                 startTime = startBoundary.timestamp,
                 endTime = endBoundary.timestamp,
+                duration = endBoundary.timestamp - startBoundary.timestamp,
                 type = startBoundary.toType,
                 statistics = segmentStats
             ))
@@ -280,9 +280,9 @@ class RideSegmentDetector {
 
         return when {
             movingRatio > 0.6f && currentWindow.activityLevel > 10f -> RideSegment.SegmentType.ACTIVE_RIDING
-            movingRatio < 0.2f && currentWindow.activityLevel < 5f -> RideSegment.SegmentType.STATIONARY
+            movingRatio < 0.2f && currentWindow.activityLevel < 5f -> RideSegment.SegmentType.STOP
             movingRatio < 0.4f -> RideSegment.SegmentType.PAUSE
-            else -> RideSegment.SegmentType.UNKNOWN
+            else -> RideSegment.SegmentType.STOP
         }
     }
 
@@ -334,12 +334,8 @@ class RideSegmentDetector {
 
         return SegmentStatistics(
             distance = distance,
-            maxSpeed = maxSpeed,
-            avgSpeed = avgSpeed,
-            maxLeanAngle = maxLeanAngle,
-            maxGForce = maxGForce,
-            elevationChange = elevationChange,
-            sampleCount = sampleCount
+            avgSpeed = avgSpeed.toDouble(),
+            maxSpeed = maxSpeed.toDouble()
         )
     }
 

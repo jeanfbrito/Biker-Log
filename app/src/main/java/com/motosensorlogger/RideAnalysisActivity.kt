@@ -128,7 +128,7 @@ class RideAnalysisActivity : AppCompatActivity() {
         // Basic ride info
         binding.rideTitle.text = csvFileName
         binding.rideDate.text = formatDate(stats.startTime)
-        binding.processingTime.text = "Processed in ${result.processingTimeMs}ms"
+        binding.processingTime.text = "Processed in ${processingTime}ms"
         
         // Performance metrics - inspired by Pirelli Diablo Super Biker
         binding.distanceValue.text = "${decimalFormat.format(stats.getDistanceKm())} km"

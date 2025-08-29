@@ -369,10 +369,12 @@ class SensorLoggerService : Service(), SensorEventListener {
 
         csvLogger.logEvent(
             SpecialEvent(
-                System.currentTimeMillis(),
-                SpecialEvent.EventType.SESSION_START,
-                metadata = sessionMetadata,
-            ),
+                timestamp = System.currentTimeMillis(),
+                eventType = SpecialEvent.EventType.SESSION_START,
+                duration = 0L,
+                maxValue = 0f,
+                metadata = sessionMetadata
+            )
         )
     }
 
@@ -382,10 +384,12 @@ class SensorLoggerService : Service(), SensorEventListener {
         // Log session end
         csvLogger.logEvent(
             SpecialEvent(
-                System.currentTimeMillis(),
-                SpecialEvent.EventType.SESSION_END,
-                metadata = "Logging stopped",
-            ),
+                timestamp = System.currentTimeMillis(),
+                eventType = SpecialEvent.EventType.SESSION_END,
+                duration = 0L,
+                maxValue = 0f,
+                metadata = "Logging stopped"
+            )
         )
 
         isLogging.set(false)
