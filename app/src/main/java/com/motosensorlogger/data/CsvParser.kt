@@ -1,343 +1,433 @@
 package com.motosensorlogger.data
 
+import android.util.Log
 import com.motosensorlogger.calibration.CalibrationData
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.opencsv.CSVReader
 import kotlinx.coroutines.yield
-import java.io.BufferedReader
 import java.io.File
 import java.io.FileReader
-import java.util.regex.Pattern
-import kotlin.math.max
+import java.io.IOException
 
 /**
- * High-performance CSV parser optimized for Moto Sensor Log format
- * Handles large files efficiently with streaming and progress reporting
+ * High-performance CSV parser for motorcycle sensor data
+ * Handles the sparse event-based format with embedded schema
  */
 class CsvParser {
-
+    
     companion object {
-        private val COMMA_PATTERN = Pattern.compile(",")
-        private val CALIBRATION_PATTERN = Pattern.compile("""# Calibration: \{""")
-        private val JSON_FIELD_PATTERN = Pattern.compile(""""([^"]+)":\s*([^,}\]]+|"[^"]*"|\[[^\]]*\])""")
+        private const val TAG = "CsvParser"
+        private const val HEADER_CALIBRATION_PREFIX = "# CALIBRATION:"
+        private const val HEADER_SCHEMA_PREFIX = "# SCHEMA:"
+        private const val HEADER_VERSION_PREFIX = "# VERSION:"
+        private const val EXPECTED_COLUMNS = 8 // timestamp, sensor_type, data1-6
     }
-
+    
     /**
-     * Parse result containing all extracted data
+     * Parse result containing sensor data and metadata
      */
     data class ParseResult(
         val sensorData: Map<SensorType, List<SensorEvent>>,
         val calibrationData: CalibrationData?,
-        val startTime: Long,
-        val endTime: Long,
-        val deviceInfo: String,
-        val schemaVersion: String,
-        val totalSamples: Int
+        val recordingStartTime: Long,
+        val recordingEndTime: Long,
+        val sampleCounts: Map<SensorType, Int>,
+        val errors: List<ProcessingError>
     )
-
+    
     /**
-     * Parse a CSV log file with progress reporting
+     * Parse a CSV file with progress reporting
      */
     suspend fun parseFile(
-        file: File,
+        csvFile: File,
         progressCallback: ((Float) -> Unit)? = null
-    ): ParseResult = withContext(Dispatchers.IO) {
+    ): ParseResult {
         
-        if (!file.exists() || !file.canRead()) {
-            throw DataProcessingException("Cannot read file: ${file.absolutePath}")
+        if (!csvFile.exists()) {
+            throw IOException("File does not exist: ${csvFile.absolutePath}")
         }
-
-        val fileSize = file.length()
-        var bytesRead = 0L
-        var lastProgress = 0f
-
-        val sensorDataMaps = mutableMapOf<SensorType, MutableList<SensorEvent>>().apply {
-            SensorType.values().forEach { type ->
-                this[type] = mutableListOf()
-            }
+        
+        if (csvFile.length() == 0L) {
+            throw IOException("File is empty: ${csvFile.absolutePath}")
         }
-
+        
+        Log.d(TAG, "Parsing CSV file: ${csvFile.name} (${csvFile.length()} bytes)")
+        
+        val errors = mutableListOf<ProcessingError>()
+        val sensorDataMap = mutableMapOf<SensorType, MutableList<SensorEvent>>()
         var calibrationData: CalibrationData? = null
-        var deviceInfo = "Unknown"
-        var schemaVersion = "1.0"
-        var startTime = 0L
-        var endTime = 0L
-        var lineCount = 0
-        var headerLineCount = 0
-
+        var recordingStartTime = Long.MAX_VALUE
+        var recordingEndTime = Long.MIN_VALUE
+        
+        // Initialize sensor data lists
+        SensorType.values().forEach { sensorType ->
+            sensorDataMap[sensorType] = mutableListOf()
+        }
+        
         try {
-            BufferedReader(FileReader(file), 64 * 1024).use { reader ->
-                var line: String?
-                var inHeader = true
-                val headerLines = mutableListOf<String>()
-
-                // Read file line by line
-                while (reader.readLine().also { line = it } != null) {
-                    line?.let { currentLine ->
-                        bytesRead += currentLine.length + 1 // +1 for newline
-                        lineCount++
-
-                        // Report progress every 1000 lines to avoid overhead
-                        if (lineCount % 1000 == 0) {
-                            val progress = bytesRead.toFloat() / fileSize
-                            if (progress - lastProgress > 0.05f) { // Update every 5%
-                                progressCallback?.invoke(progress)
-                                lastProgress = progress
-                                yield() // Allow other coroutines to run
+            CSVReader(FileReader(csvFile)).use { reader ->
+                var lineNumber = 0
+                var dataLines = 0
+                val estimatedLines = estimateLineCount(csvFile)
+                
+                // Parse header and data
+                var line: Array<String>?
+                while (reader.readNext().also { line = it } != null) {
+                    lineNumber++
+                    val currentLine = line!!
+                    
+                    try {
+                        when {
+                            currentLine[0].startsWith("#") -> {
+                                // Header line
+                                parseHeaderLine(currentLine, calibrationData, errors, lineNumber)?.let {
+                                    calibrationData = it
+                                }
+                            }
+                            currentLine.size >= 2 -> {
+                                // Data line
+                                val sensorEvent = parseDataLine(currentLine, errors, lineNumber)
+                                sensorEvent?.let { event ->
+                                    sensorDataMap[event.sensorType]?.add(event)
+                                    recordingStartTime = minOf(recordingStartTime, event.timestamp)
+                                    recordingEndTime = maxOf(recordingEndTime, event.timestamp)
+                                }
+                                dataLines++
+                                
+                                // Report progress every 1000 lines
+                                if (dataLines % 1000 == 0) {
+                                    yield()
+                                    if (estimatedLines > 0) {
+                                        progressCallback?.invoke(dataLines.toFloat() / estimatedLines)
+                                    }
+                                }
+                            }
+                            else -> {
+                                // Invalid line
+                                if (currentLine.isNotEmpty() && !currentLine[0].isBlank()) {
+                                    errors.add(ProcessingError(
+                                        timestamp = System.currentTimeMillis(),
+                                        errorType = ProcessingError.ErrorType.CORRUPTED_DATA,
+                                        message = "Invalid line format at line $lineNumber: ${currentLine.joinToString(",")}",
+                                        severity = ProcessingError.Severity.WARNING
+                                    ))
+                                }
                             }
                         }
-
-                        if (inHeader) {
-                            if (currentLine.startsWith("#") || currentLine.startsWith("timestamp,")) {
-                                headerLines.add(currentLine)
-                                headerLineCount++
-                                
-                                // Parse header information
-                                if (currentLine.contains("Device:")) {
-                                    deviceInfo = currentLine.substringAfter("Device:").trim().removePrefix("# ")
-                                }
-                                
-                                if (currentLine == "timestamp,sensor_type,data1,data2,data3,data4,data5,data6") {
-                                    inHeader = false
-                                    // Parse calibration from collected header lines
-                                    calibrationData = parseCalibrationFromHeader(headerLines.joinToString("\n"))
-                                    continue
-                                }
-                            }
-                        } else {
-                            // Parse sensor data line
-                            val sensorEvent = parseSensorDataLine(currentLine)
-                            sensorEvent?.let { event ->
-                                sensorDataMaps[event.sensorType]?.add(event)
-                                
-                                // Track time bounds
-                                if (startTime == 0L || event.timestamp < startTime) {
-                                    startTime = event.timestamp
-                                }
-                                if (event.timestamp > endTime) {
-                                    endTime = event.timestamp
-                                }
-                            }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Error parsing line $lineNumber", e)
+                        errors.add(ProcessingError(
+                            timestamp = System.currentTimeMillis(),
+                            errorType = ProcessingError.ErrorType.CORRUPTED_DATA,
+                            message = "Parse error at line $lineNumber: ${e.message}",
+                            severity = ProcessingError.Severity.WARNING
+                        ))
+                    }
+                }
+                
+                Log.d(TAG, "Parsed $dataLines data lines from ${csvFile.name}")
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "IO error reading file", e)
+            throw e
+        }
+        
+        // Validate and sort data
+        val finalSensorData = validateAndSortData(sensorDataMap, errors)
+        val sampleCounts = finalSensorData.mapValues { it.value.size }
+        
+        // Handle missing timestamps
+        if (recordingStartTime == Long.MAX_VALUE) {
+            recordingStartTime = 0L
+        }
+        if (recordingEndTime == Long.MIN_VALUE) {
+            recordingEndTime = 0L
+        }
+        
+        Log.d(TAG, "Parsing complete. Sample counts: ${sampleCounts.filter { it.value > 0 }}")
+        
+        return ParseResult(
+            sensorData = finalSensorData,
+            calibrationData = calibrationData,
+            recordingStartTime = recordingStartTime,
+            recordingEndTime = recordingEndTime,
+            sampleCounts = sampleCounts,
+            errors = errors
+        )
+    }
+    
+    /**
+     * Parse header line for calibration data
+     */
+    private fun parseHeaderLine(
+        line: Array<String>,
+        currentCalibration: CalibrationData?,
+        errors: MutableList<ProcessingError>,
+        lineNumber: Int
+    ): CalibrationData? {
+        
+        if (line.isEmpty()) return currentCalibration
+        
+        val headerContent = line[0]
+        
+        when {
+            headerContent.startsWith(HEADER_CALIBRATION_PREFIX) -> {
+                try {
+                    return parseCalibrationHeader(headerContent, errors, lineNumber)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to parse calibration header at line $lineNumber", e)
+                    errors.add(ProcessingError(
+                        timestamp = System.currentTimeMillis(),
+                        errorType = ProcessingError.ErrorType.MISSING_CALIBRATION,
+                        message = "Invalid calibration header at line $lineNumber: ${e.message}",
+                        severity = ProcessingError.Severity.WARNING
+                    ))
+                }
+            }
+            headerContent.startsWith(HEADER_SCHEMA_PREFIX) -> {
+                Log.d(TAG, "Schema header: $headerContent")
+            }
+            headerContent.startsWith(HEADER_VERSION_PREFIX) -> {
+                Log.d(TAG, "Version header: $headerContent")
+            }
+        }
+        
+        return currentCalibration
+    }
+    
+    /**
+     * Parse calibration information from header
+     */
+    private fun parseCalibrationHeader(
+        headerContent: String,
+        errors: MutableList<ProcessingError>,
+        lineNumber: Int
+    ): CalibrationData? {
+        // Parse calibration data from header comment
+        // Expected format: # CALIBRATION: quality=GOOD,pitch=-2.1,roll=0.3,matrix=[...],timestamp=123456789
+        
+        try {
+            val calibrationString = headerContent.removePrefix(HEADER_CALIBRATION_PREFIX).trim()
+            val parts = calibrationString.split(",")
+            
+            var quality = CalibrationData.Quality.UNKNOWN
+            var referencePitch = 0f
+            var referenceRoll = 0f
+            var referenceRotationMatrix = FloatArray(9) { if (it % 4 == 0) 1f else 0f } // Identity matrix
+            var timestamp = System.currentTimeMillis()
+            
+            for (part in parts) {
+                val keyValue = part.split("=", limit = 2)
+                if (keyValue.size != 2) continue
+                
+                val key = keyValue[0].trim()
+                val value = keyValue[1].trim()
+                
+                when (key.lowercase()) {
+                    "quality" -> {
+                        quality = try {
+                            CalibrationData.Quality.valueOf(value.uppercase())
+                        } catch (e: IllegalArgumentException) {
+                            CalibrationData.Quality.UNKNOWN
+                        }
+                    }
+                    "pitch" -> {
+                        referencePitch = value.toFloatOrNull() ?: 0f
+                    }
+                    "roll" -> {
+                        referenceRoll = value.toFloatOrNull() ?: 0f
+                    }
+                    "timestamp" -> {
+                        timestamp = value.toLongOrNull() ?: System.currentTimeMillis()
+                    }
+                    "matrix" -> {
+                        // Parse rotation matrix from string like "[1,0,0,0,1,0,0,0,1]"
+                        val matrixStr = value.removePrefix("[").removeSuffix("]")
+                        val matrixValues = matrixStr.split(",").mapNotNull { it.trim().toFloatOrNull() }
+                        if (matrixValues.size == 9) {
+                            referenceRotationMatrix = matrixValues.toFloatArray()
                         }
                     }
                 }
             }
-
-            // Final progress update
-            progressCallback?.invoke(1.0f)
-
-            // Validate parsed data
-            if (sensorDataMaps.values.all { it.isEmpty() }) {
-                throw DataProcessingException("No valid sensor data found in file")
-            }
-
-            if (startTime == 0L || endTime == 0L) {
-                throw DataProcessingException("Invalid timestamp data in file")
-            }
-
-            // Sort all sensor data by timestamp for consistent processing
-            val sortedSensorData = sensorDataMaps.mapValues { (_, events) ->
-                events.sortedBy { it.timestamp }
-            }
-
-            val totalSamples = sortedSensorData.values.sumOf { it.size }
-
-            ParseResult(
-                sensorData = sortedSensorData,
-                calibrationData = calibrationData,
-                startTime = startTime,
-                endTime = endTime,
-                deviceInfo = deviceInfo,
-                schemaVersion = schemaVersion,
-                totalSamples = totalSamples
+            
+            return CalibrationData(
+                quality = quality,
+                referencePitch = referencePitch,
+                referenceRoll = referenceRoll,
+                referenceRotationMatrix = referenceRotationMatrix,
+                timestamp = timestamp
             )
-
-        } catch (e: Exception) {
-            throw DataProcessingException("Failed to parse CSV file: ${e.message}", e)
-        }
-    }
-
-    /**
-     * Parse a single sensor data line from CSV
-     */
-    private fun parseSensorDataLine(line: String): SensorEvent? {
-        if (line.isBlank() || line.startsWith("#")) return null
-
-        return try {
-            val parts = COMMA_PATTERN.split(line, 8) // Limit to 8 parts for efficiency
             
-            if (parts.size < 3) return null
-
-            val timestamp = parts[0].toLongOrNull() ?: return null
-            val sensorTypeStr = parts[1].trim()
-
-            when (sensorTypeStr) {
-                "GPS" -> parseGpsEvent(timestamp, parts)
-                "IMU" -> parseImuEvent(timestamp, parts)
-                "BARO" -> parseBaroEvent(timestamp, parts)
-                "MAG" -> parseMagEvent(timestamp, parts)
-                "EVENT" -> parseSpecialEvent(timestamp, parts)
-                else -> null
-            }
         } catch (e: Exception) {
-            // Skip malformed lines rather than failing entire file
-            null
-        }
-    }
-
-    /**
-     * Parse GPS event from CSV parts
-     */
-    private fun parseGpsEvent(timestamp: Long, parts: Array<String>): GpsEvent? {
-        return try {
-            if (parts.size < 8) return null
-            
-            GpsEvent(
-                timestamp = timestamp,
-                latitude = parts[2].toDoubleOrNull() ?: return null,
-                longitude = parts[3].toDoubleOrNull() ?: return null,
-                altitude = parts[4].toDoubleOrNull() ?: 0.0,
-                speed = parts[5].toFloatOrNull() ?: 0f,
-                bearing = parts[6].toFloatOrNull() ?: 0f,
-                accuracy = parts[7].toFloatOrNull() ?: 0f
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Parse IMU event from CSV parts
-     */
-    private fun parseImuEvent(timestamp: Long, parts: Array<String>): ImuEvent? {
-        return try {
-            if (parts.size < 8) return null
-            
-            ImuEvent(
-                timestamp = timestamp,
-                accelX = parts[2].toFloatOrNull() ?: return null,
-                accelY = parts[3].toFloatOrNull() ?: return null,
-                accelZ = parts[4].toFloatOrNull() ?: return null,
-                gyroX = parts[5].toFloatOrNull() ?: return null,
-                gyroY = parts[6].toFloatOrNull() ?: return null,
-                gyroZ = parts[7].toFloatOrNull() ?: return null
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Parse barometric event from CSV parts
-     */
-    private fun parseBaroEvent(timestamp: Long, parts: Array<String>): BaroEvent? {
-        return try {
-            if (parts.size < 4) return null
-            
-            BaroEvent(
-                timestamp = timestamp,
-                altitudeBaro = parts[2].toFloatOrNull() ?: return null,
-                pressure = parts[3].toFloatOrNull() ?: return null
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Parse magnetometer event from CSV parts
-     */
-    private fun parseMagEvent(timestamp: Long, parts: Array<String>): MagEvent? {
-        return try {
-            if (parts.size < 5) return null
-            
-            MagEvent(
-                timestamp = timestamp,
-                magX = parts[2].toFloatOrNull() ?: return null,
-                magY = parts[3].toFloatOrNull() ?: return null,
-                magZ = parts[4].toFloatOrNull() ?: return null
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Parse special event from CSV parts
-     */
-    private fun parseSpecialEvent(timestamp: Long, parts: Array<String>): SpecialEvent? {
-        return try {
-            if (parts.size < 4) return null
-            
-            val eventTypeName = parts[2].trim()
-            val eventType = try {
-                SpecialEvent.EventType.valueOf(eventTypeName)
-            } catch (e: IllegalArgumentException) {
-                return null
-            }
-            
-            SpecialEvent(
-                timestamp = timestamp,
-                eventType = eventType,
-                duration = parts.getOrNull(3)?.toLongOrNull() ?: 0L,
-                maxValue = parts.getOrNull(4)?.toFloatOrNull() ?: 0f,
-                metadata = parts.getOrNull(5)?.trim('"') ?: ""
-            )
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Parse calibration data from CSV header
-     */
-    private fun parseCalibrationFromHeader(header: String): CalibrationData? {
-        if (!header.contains("# Calibration: {")) {
+            Log.w(TAG, "Failed to parse calibration data", e)
             return null
         }
-
-        return try {
-            // Simple parser for the JSON-like calibration data in header
-            // This is a simplified version - full implementation would use a proper JSON parser
-            val calibrationSection = header.substringAfter("# Calibration: {").substringBefore("# }")
+    }
+    
+    /**
+     * Parse a data line into a sensor event
+     */
+    private fun parseDataLine(
+        line: Array<String>,
+        errors: MutableList<ProcessingError>,
+        lineNumber: Int
+    ): SensorEvent? {
+        
+        if (line.size < 2) {
+            return null
+        }
+        
+        try {
+            val timestamp = line[0].toLongOrNull() ?: return null
+            val sensorTypeStr = line[1].trim()
             
-            // Extract basic values using regex (simplified approach)
-            val timestampMatch = """\"timestamp\":\s*(\d+)""".toRegex().find(calibrationSection)
-            val timestamp = timestampMatch?.groupValues?.get(1)?.toLongOrNull() ?: System.currentTimeMillis()
-
-            // For now, return null to indicate uncalibrated data
-            // Full implementation would parse the complete calibration structure
-            null
+            val sensorType = SensorType.values().find { it.code == sensorTypeStr }
+                ?: return null
+            
+            // Parse based on sensor type
+            return when (sensorType) {
+                SensorType.GPS -> parseGpsEvent(timestamp, line)
+                SensorType.IMU -> parseImuEvent(timestamp, line)
+                SensorType.BARO -> parseBaroEvent(timestamp, line)
+                SensorType.MAG -> parseMagEvent(timestamp, line)
+                else -> null
+            }
             
         } catch (e: Exception) {
-            null
+            Log.w(TAG, "Error parsing data line $lineNumber", e)
+            return null
         }
     }
-}
-
-/**
- * Extension functions for safe parsing
- */
-private fun String.toDoubleOrNull(): Double? {
-    return try {
-        if (this.isBlank()) null else this.toDouble()
-    } catch (e: NumberFormatException) {
-        null
+    
+    /**
+     * Parse GPS event from CSV line
+     */
+    private fun parseGpsEvent(timestamp: Long, line: Array<String>): GpsEvent? {
+        if (line.size < 8) return null
+        
+        try {
+            return GpsEvent(
+                timestamp = timestamp,
+                latitude = line[2].toDoubleOrNull() ?: return null,
+                longitude = line[3].toDoubleOrNull() ?: return null,
+                altitude = line[4].toDoubleOrNull() ?: 0.0,
+                speed = line[5].toFloatOrNull() ?: 0f,
+                bearing = line[6].toFloatOrNull() ?: 0f,
+                accuracy = line[7].toFloatOrNull() ?: Float.MAX_VALUE
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse GPS event", e)
+            return null
+        }
     }
-}
-
-private fun String.toFloatOrNull(): Float? {
-    return try {
-        if (this.isBlank()) null else this.toFloat()
-    } catch (e: NumberFormatException) {
-        null
+    
+    /**
+     * Parse IMU event from CSV line
+     */
+    private fun parseImuEvent(timestamp: Long, line: Array<String>): ImuEvent? {
+        if (line.size < 8) return null
+        
+        try {
+            return ImuEvent(
+                timestamp = timestamp,
+                accelX = line[2].toFloatOrNull() ?: return null,
+                accelY = line[3].toFloatOrNull() ?: return null,
+                accelZ = line[4].toFloatOrNull() ?: return null,
+                gyroX = line[5].toFloatOrNull() ?: return null,
+                gyroY = line[6].toFloatOrNull() ?: return null,
+                gyroZ = line[7].toFloatOrNull() ?: return null
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse IMU event", e)
+            return null
+        }
     }
-}
-
-private fun String.toLongOrNull(): Long? {
-    return try {
-        if (this.isBlank()) null else this.toLong()
-    } catch (e: NumberFormatException) {
-        null
+    
+    /**
+     * Parse barometer event from CSV line
+     */
+    private fun parseBaroEvent(timestamp: Long, line: Array<String>): BaroEvent? {
+        if (line.size < 4) return null
+        
+        try {
+            return BaroEvent(
+                timestamp = timestamp,
+                altitudeBaro = line[2].toFloatOrNull() ?: return null,
+                pressure = line[3].toFloatOrNull() ?: return null
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse BARO event", e)
+            return null
+        }
+    }
+    
+    /**
+     * Parse magnetometer event from CSV line
+     */
+    private fun parseMagEvent(timestamp: Long, line: Array<String>): MagEvent? {
+        if (line.size < 5) return null
+        
+        try {
+            return MagEvent(
+                timestamp = timestamp,
+                magX = line[2].toFloatOrNull() ?: return null,
+                magY = line[3].toFloatOrNull() ?: return null,
+                magZ = line[4].toFloatOrNull() ?: return null
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse MAG event", e)
+            return null
+        }
+    }
+    
+    /**
+     * Validate and sort parsed data
+     */
+    private fun validateAndSortData(
+        sensorDataMap: Map<SensorType, MutableList<SensorEvent>>,
+        errors: MutableList<ProcessingError>
+    ): Map<SensorType, List<SensorEvent>> {
+        
+        val result = mutableMapOf<SensorType, List<SensorEvent>>()
+        
+        sensorDataMap.forEach { (sensorType, events) ->
+            // Sort by timestamp
+            val sortedEvents = events.sortedBy { it.timestamp }
+            
+            // Validate timestamps are reasonable
+            val validEvents = sortedEvents.filter { event ->
+                val isValid = event.timestamp > 0 && 
+                             event.timestamp < System.currentTimeMillis() + 86400000L // Not more than 24h in future
+                if (!isValid) {
+                    errors.add(ProcessingError(
+                        timestamp = System.currentTimeMillis(),
+                        errorType = ProcessingError.ErrorType.CORRUPTED_DATA,
+                        message = "Invalid timestamp for $sensorType: ${event.timestamp}",
+                        severity = ProcessingError.Severity.WARNING
+                    ))
+                }
+                isValid
+            }
+            
+            result[sensorType] = validEvents
+            
+            if (validEvents.isNotEmpty()) {
+                Log.d(TAG, "$sensorType: ${validEvents.size} valid samples")
+            }
+        }
+        
+        return result
+    }
+    
+    /**
+     * Estimate line count for progress reporting
+     */
+    private fun estimateLineCount(file: File): Long {
+        return try {
+            // Rough estimate: assume average line length of 50 characters
+            file.length() / 50
+        } catch (e: Exception) {
+            0L
+        }
     }
 }

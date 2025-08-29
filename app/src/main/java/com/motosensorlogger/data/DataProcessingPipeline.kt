@@ -1,243 +1,308 @@
 package com.motosensorlogger.data
 
-import android.content.Context
+import android.util.Log
+import com.motosensorlogger.calibration.CalibrationData
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.io.File
-import kotlin.math.sqrt
+import java.io.IOException
+import kotlin.system.measureTimeMillis
 
 /**
- * High-performance data processing pipeline for Moto Sensor Log files
- * Processes 1 hour of data in < 5 seconds with robust error handling
+ * High-performance data processing pipeline for motorcycle sensor data
+ * Processes CSV files into structured metrics, segments, and statistics
+ * 
+ * Performance target: Process 1 hour of data in < 5 seconds
  */
-class DataProcessingPipeline(
-    private val context: Context,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.Default
-) {
-    private val csvParser = CsvParser()
+class DataProcessingPipeline {
+    
+    companion object {
+        private const val TAG = "DataProcessingPipeline"
+        private const val MAX_PROCESSING_TIME_MS = 30_000L // 30 seconds max
+        private const val PERFORMANCE_TARGET_MS = 5_000L // 5 seconds target
+    }
+
     private val metricsCalculator = DerivedMetricsCalculator()
     private val segmentDetector = RideSegmentDetector()
     private val statisticsGenerator = RideStatisticsGenerator()
-    private val jsonExporter = JsonExporter()
+    private val csvParser = CsvParser()
 
     /**
-     * Process a ride log file and return comprehensive processed data
-     * @param logFile The CSV log file to process
-     * @param callback Optional progress callback
-     * @return ProcessedRideData containing all derived information
+     * Process a CSV file with progress reporting
      */
-    suspend fun processRideFile(
-        logFile: File,
-        callback: ProcessingProgressCallback? = null
-    ): ProcessedRideData = withContext(dispatcher) {
+    suspend fun processFile(
+        csvFile: File,
+        progressCallback: ((Float) -> Unit)? = null
+    ): ProcessingResult = withContext(Dispatchers.IO) {
+        
+        val startTime = System.currentTimeMillis()
+        val errors = mutableListOf<ProcessingError>()
+        
         try {
-            callback?.onProgress(ProcessingStage.PARSING.displayName, 0f)
+            progressCallback?.invoke(0f)
             
-            // Stage 1: Parse CSV file
-            val parseResult = csvParser.parseFile(logFile) { progress ->
-                callback?.onProgress(ProcessingStage.PARSING.displayName, progress * 0.2f)
+            // Step 1: Parse CSV file (20% of progress)
+            Log.d(TAG, "Starting CSV parsing for file: ${csvFile.name}")
+            val parseResult = csvParser.parseFile(csvFile) { progress ->
+                progressCallback?.invoke(progress * 0.2f)
             }
-            callback?.onStageComplete(ProcessingStage.PARSING.displayName)
-
-            // Stage 2: Validate data quality
-            callback?.onProgress(ProcessingStage.VALIDATION.displayName, 0.2f)
-            val dataQuality = validateDataQuality(parseResult.sensorData)
-            callback?.onStageComplete(ProcessingStage.VALIDATION.displayName)
-
-            // Stage 3: Process calibration data
-            callback?.onProgress(ProcessingStage.CALIBRATION.displayName, 0.3f)
-            val calibrationData = parseResult.calibrationData
-            callback?.onStageComplete(ProcessingStage.CALIBRATION.displayName)
-
-            // Stage 4: Calculate derived metrics (most CPU intensive)
-            callback?.onProgress(ProcessingStage.METRICS.displayName, 0.4f)
+            
+            if (parseResult.errors.isNotEmpty()) {
+                errors.addAll(parseResult.errors)
+                Log.w(TAG, "CSV parsing completed with ${parseResult.errors.size} errors")
+            }
+            
+            progressCallback?.invoke(0.2f)
+            
+            // Step 2: Calculate derived metrics (40% of progress)
+            Log.d(TAG, "Calculating derived metrics...")
             val derivedMetrics = metricsCalculator.calculate(
-                parseResult.sensorData,
-                calibrationData
+                sensorData = parseResult.sensorData,
+                calibrationData = parseResult.calibrationData
             ) { progress ->
-                callback?.onProgress(ProcessingStage.METRICS.displayName, 0.4f + progress * 0.3f)
+                progressCallback?.invoke(0.2f + progress * 0.4f)
             }
-            callback?.onStageComplete(ProcessingStage.METRICS.displayName)
-
-            // Stage 5: Detect ride segments
-            callback?.onProgress(ProcessingStage.SEGMENTATION.displayName, 0.7f)
+            
+            progressCallback?.invoke(0.6f)
+            
+            // Step 3: Detect ride segments (20% of progress)
+            Log.d(TAG, "Detecting ride segments...")
             val segments = segmentDetector.detectSegments(
-                parseResult.sensorData,
-                derivedMetrics
+                sensorData = parseResult.sensorData,
+                derivedMetrics = derivedMetrics
             ) { progress ->
-                callback?.onProgress(ProcessingStage.SEGMENTATION.displayName, 0.7f + progress * 0.15f)
+                progressCallback?.invoke(0.6f + progress * 0.2f)
             }
-            callback?.onStageComplete(ProcessingStage.SEGMENTATION.displayName)
-
-            // Stage 6: Generate statistics
-            callback?.onProgress(ProcessingStage.STATISTICS.displayName, 0.85f)
+            
+            progressCallback?.invoke(0.8f)
+            
+            // Step 4: Generate statistics (20% of progress)
+            Log.d(TAG, "Generating ride statistics...")
             val statistics = statisticsGenerator.generate(
-                parseResult.sensorData,
-                derivedMetrics,
-                segments
+                sensorData = parseResult.sensorData,
+                derivedMetrics = derivedMetrics,
+                segments = segments
             )
-            callback?.onStageComplete(ProcessingStage.STATISTICS.displayName)
-
-            // Create metadata
-            val metadata = RideMetadata(
-                fileName = logFile.name,
-                startTime = parseResult.startTime,
-                endTime = parseResult.endTime,
-                duration = parseResult.endTime - parseResult.startTime,
-                deviceInfo = parseResult.deviceInfo,
-                schemaVersion = parseResult.schemaVersion,
-                dataQuality = dataQuality
+            
+            progressCallback?.invoke(1.0f)
+            
+            val processingTime = System.currentTimeMillis() - startTime
+            Log.d(TAG, "Processing completed in ${processingTime}ms for file ${csvFile.name}")
+            
+            // Log performance
+            if (processingTime > PERFORMANCE_TARGET_MS) {
+                Log.w(TAG, "Processing time ${processingTime}ms exceeded target ${PERFORMANCE_TARGET_MS}ms")
+            }
+            
+            val fileInfo = FileInfo(
+                fileName = csvFile.name,
+                fileSizeBytes = csvFile.length(),
+                recordingStartTime = parseResult.recordingStartTime,
+                recordingEndTime = parseResult.recordingEndTime,
+                isCalibrated = parseResult.calibrationData != null,
+                calibrationQuality = parseResult.calibrationData?.quality?.name
             )
-
-            callback?.onProgress(ProcessingStage.EXPORT.displayName, 1.0f)
-            callback?.onStageComplete(ProcessingStage.EXPORT.displayName)
-
-            ProcessedRideData(
-                metadata = metadata,
-                calibrationData = calibrationData,
+            
+            ProcessingResult(
+                fileInfo = fileInfo,
+                processingTime = processingTime,
+                sampleCounts = parseResult.sampleCounts,
+                derivedMetrics = derivedMetrics,
                 segments = segments,
                 statistics = statistics,
-                derivedMetrics = derivedMetrics,
-                rawSensorData = parseResult.sensorData
+                errors = errors
             )
-
+            
         } catch (e: Exception) {
-            callback?.onError("Processing", e.message ?: "Unknown error")
-            throw DataProcessingException("Failed to process ride file: ${e.message}", e)
+            val processingTime = System.currentTimeMillis() - startTime
+            Log.e(TAG, "Processing failed after ${processingTime}ms", e)
+            
+            errors.add(ProcessingError(
+                timestamp = startTime,
+                errorType = when (e) {
+                    is IOException -> ProcessingError.ErrorType.CORRUPTED_DATA
+                    is OutOfMemoryError -> ProcessingError.ErrorType.PROCESSING_TIMEOUT
+                    else -> ProcessingError.ErrorType.UNKNOWN_FORMAT
+                },
+                message = e.message ?: "Unknown error",
+                severity = ProcessingError.Severity.CRITICAL
+            ))
+            
+            // Return minimal result with error information
+            ProcessingResult(
+                fileInfo = FileInfo(
+                    fileName = csvFile.name,
+                    fileSizeBytes = csvFile.length(),
+                    recordingStartTime = 0L,
+                    recordingEndTime = 0L,
+                    isCalibrated = false,
+                    calibrationQuality = null
+                ),
+                processingTime = processingTime,
+                sampleCounts = emptyMap(),
+                derivedMetrics = DerivedMetrics(
+                    leanAngle = emptyList(),
+                    gForce = emptyList(),
+                    acceleration = emptyList(),
+                    velocity = emptyList(),
+                    orientation = emptyList()
+                ),
+                segments = emptyList(),
+                statistics = RideStatistics(
+                    totalDistance = 0.0,
+                    totalDuration = 0L,
+                    ridingDuration = 0L,
+                    maxSpeed = 0f,
+                    avgSpeed = 0f,
+                    maxLeanAngle = 0f,
+                    maxGForce = 0f,
+                    totalElevationGain = 0f,
+                    totalElevationLoss = 0f,
+                    segmentCount = 0,
+                    specialEvents = emptyList()
+                ),
+                errors = errors
+            )
         }
     }
 
     /**
-     * Process multiple files in parallel
+     * Process multiple files concurrently
      */
-    suspend fun processMultipleFiles(
-        files: List<File>,
-        callback: ProcessingProgressCallback? = null
-    ): List<ProcessedRideData> = withContext(dispatcher) {
-        files.mapIndexed { index, file ->
-            async {
-                val fileCallback = object : ProcessingProgressCallback {
-                    override suspend fun onProgress(stage: String, progress: Float) {
-                        val totalProgress = (index + progress) / files.size
-                        callback?.onProgress("Processing ${file.name}", totalProgress)
-                    }
-
-                    override suspend fun onStageComplete(stage: String) {
-                        callback?.onStageComplete("File ${index + 1}/${files.size}: $stage")
-                    }
-
-                    override suspend fun onError(stage: String, error: String) {
-                        callback?.onError("File ${file.name}", error)
-                    }
-                }
-                
-                try {
-                    processRideFile(file, fileCallback)
-                } catch (e: Exception) {
-                    // Continue processing other files even if one fails
-                    null
-                }
+    suspend fun processFiles(
+        csvFiles: List<File>,
+        progressCallback: ((Float) -> Unit)? = null
+    ): List<ProcessingResult> = withContext(Dispatchers.IO) {
+        
+        val results = mutableListOf<ProcessingResult>()
+        
+        csvFiles.forEachIndexed { index, file ->
+            val fileProgress = index.toFloat() / csvFiles.size
+            
+            val result = processFile(file) { progress ->
+                progressCallback?.invoke(fileProgress + progress / csvFiles.size)
             }
-        }.awaitAll().filterNotNull()
+            
+            results.add(result)
+        }
+        
+        results
     }
 
     /**
-     * Export processed data to JSON
+     * Export processing result to JSON
      */
     suspend fun exportToJson(
-        processedData: ProcessedRideData,
+        result: ProcessingResult,
         outputFile: File
-    ): Boolean = withContext(Dispatchers.IO) {
+    ) = withContext(Dispatchers.IO) {
         try {
-            jsonExporter.exportToFile(processedData, outputFile)
-            true
+            val exportData = createExportData(result)
+            outputFile.writeText(exportData.toJson())
+            Log.d(TAG, "Exported data to: ${outputFile.absolutePath}")
         } catch (e: Exception) {
-            false
+            Log.e(TAG, "Failed to export data", e)
+            throw e
         }
     }
 
     /**
-     * Get processing performance stats
+     * Create simplified export data for external analysis
      */
-    fun getPerformanceStats(): ProcessingPerformanceStats {
-        return ProcessingPerformanceStats(
-            avgProcessingTime = 0L, // Will be implemented with actual measurements
-            throughputMBps = 0.0,
-            memoryUsage = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+    private fun createExportData(result: ProcessingResult): ExportData {
+        val rideInfo = RideInfo(
+            fileName = result.fileInfo.fileName,
+            startTime = result.fileInfo.recordingStartTime,
+            endTime = result.fileInfo.recordingEndTime,
+            duration = result.statistics.totalDuration,
+            distance = result.statistics.totalDistance,
+            isCalibrated = result.fileInfo.isCalibrated
+        )
+        
+        val summaryStats = SummaryStats(
+            maxSpeed = result.statistics.maxSpeed,
+            avgSpeed = result.statistics.avgSpeed,
+            maxLeanAngle = result.statistics.maxLeanAngle,
+            maxGForce = result.statistics.maxGForce,
+            elevationGain = result.statistics.totalElevationGain,
+            elevationLoss = result.statistics.totalElevationLoss
+        )
+        
+        // Sample time series data (every 10th sample for performance)
+        val gpsPoints = result.derivedMetrics.velocity
+            .filterIndexed { index, _ -> index % 10 == 0 }
+            .map { velocity ->
+                // Find corresponding GPS data
+                GpsPoint(
+                    timestamp = velocity.timestamp,
+                    lat = 0.0, // Would need to correlate with actual GPS events
+                    lon = 0.0,
+                    alt = 0.0,
+                    speed = velocity.speed
+                )
+            }
+            
+        val leanAnglePoints = result.derivedMetrics.leanAngle
+            .filterIndexed { index, _ -> index % 10 == 0 }
+            .map { lean ->
+                AnglePoint(
+                    timestamp = lean.timestamp,
+                    roll = lean.rollAngle,
+                    pitch = lean.pitchAngle
+                )
+            }
+            
+        val speedPoints = result.derivedMetrics.velocity
+            .filterIndexed { index, _ -> index % 10 == 0 }
+            .map { velocity ->
+                SpeedPoint(
+                    timestamp = velocity.timestamp,
+                    speed = velocity.speed,
+                    acceleration = velocity.acceleration
+                )
+            }
+        
+        val timeSeries = TimeSeriesData(
+            gps = gpsPoints,
+            leanAngles = leanAnglePoints,
+            speeds = speedPoints
+        )
+        
+        val events = result.statistics.specialEvents.map { event ->
+            EventSummary(
+                timestamp = event.timestamp,
+                type = event.type.name,
+                description = event.description,
+                confidence = event.confidence
+            )
+        }
+        
+        return ExportData(
+            rideInfo = rideInfo,
+            summaryStats = summaryStats,
+            timeSeries = timeSeries,
+            events = events
         )
     }
 
     /**
-     * Validate data quality and identify issues
+     * Stream processing for real-time analysis
      */
-    private fun validateDataQuality(sensorData: Map<SensorType, List<SensorEvent>>): DataQuality {
-        val issues = mutableListOf<DataQuality.DataIssue>()
-        val coverage = mutableMapOf<SensorType, Float>()
-
-        // Check sensor coverage
-        SensorType.values().forEach { sensorType ->
-            val data = sensorData[sensorType] ?: emptyList()
-            val expectedMinSamples = when (sensorType) {
-                SensorType.GPS -> 300 // 5Hz * 60s = 300 samples per minute minimum
-                SensorType.IMU -> 6000 // 100Hz * 60s
-                SensorType.BARO -> 1500 // 25Hz * 60s  
-                SensorType.MAG -> 1500 // 25Hz * 60s
-                else -> 0
-            }
-
-            val actualSamples = data.size
-            val coveragePercent = if (expectedMinSamples > 0) {
-                minOf(100f, (actualSamples.toFloat() / expectedMinSamples) * 100f)
-            } else 100f
-
-            coverage[sensorType] = coveragePercent
-
-            // Flag missing critical sensors
-            if (sensorType == SensorType.GPS && actualSamples == 0) {
-                issues.add(DataQuality.DataIssue.MISSING_GPS)
-            }
-            if (sensorType == SensorType.IMU && actualSamples == 0) {
-                issues.add(DataQuality.DataIssue.MISSING_IMU)
-            }
-        }
-
-        // Check for time gaps
-        val allEvents = sensorData.values.flatten().sortedBy { it.timestamp }
-        if (allEvents.isNotEmpty()) {
-            var lastTimestamp = allEvents.first().timestamp
-            for (event in allEvents.drop(1)) {
-                if (event.timestamp - lastTimestamp > 10_000) { // 10 second gap
-                    issues.add(DataQuality.DataIssue.LARGE_TIME_GAPS)
-                    break
-                }
-                lastTimestamp = event.timestamp
-            }
-        }
-
-        // Calculate overall scores
-        val completeness = coverage.values.average().toFloat()
-        val consistency = if (issues.contains(DataQuality.DataIssue.LARGE_TIME_GAPS)) 70f else 95f
-        val overallScore = (completeness + consistency) / 2f
-
-        return DataQuality(
-            overallScore = overallScore,
-            completeness = completeness,
-            consistency = consistency,
-            sensorCoverage = coverage,
-            issues = issues
-        )
+    fun processStream(
+        sensorDataFlow: Flow<SensorEvent>
+    ): Flow<ProcessingResult> = flow {
+        // Implementation would accumulate sensor events and process in chunks
+        // This is a placeholder for real-time processing capability
+        TODO("Stream processing not implemented in MVP")
     }
 }
 
 /**
- * Exception thrown during data processing
+ * Extension function to export data as JSON
  */
-class DataProcessingException(message: String, cause: Throwable? = null) : Exception(message, cause)
-
-/**
- * Performance statistics for the processing pipeline
- */
-data class ProcessingPerformanceStats(
-    val avgProcessingTime: Long, // milliseconds
-    val throughputMBps: Double,
-    val memoryUsage: Long, // bytes
-)
+private fun ExportData.toJson(): String = 
+    com.google.gson.GsonBuilder()
+        .setPrettyPrinting()
+        .create()
+        .toJson(this)
