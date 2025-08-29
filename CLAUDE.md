@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Auto-approved Commands for Worktree Operations
+
+The following commands are pre-approved for parallel worktree operations:
+- `cd .git/worktrees/*`
+- `cd /Users/jean/Github/Biker Log/.git/worktrees/*`
+- Any git worktree commands
+- Build and test commands in worktrees
+
 ## IMPORTANT: Automatic Worktree Setup for Parallel Work
 
 **Every new agent session MUST work in its own git worktree to prevent conflicts.**
@@ -77,6 +85,20 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew lintDebug
 1. ✅ Run lint: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew lint`
 2. ✅ Run tests: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew test`
 3. ✅ Verify build: `JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./gradlew assembleDebug`
+
+## Pull Request Guidelines
+
+**PR Title Format:** Must follow conventional commit standards with type prefix:
+- `feat: Description` - New features
+- `fix: Description` - Bug fixes  
+- `docs: Description` - Documentation changes
+- `refactor: Description` - Code refactoring
+- `test: Description` - Test additions/changes
+- `chore: Description` - Maintenance tasks
+
+**Example:** `feat: Log File Search and Filter Functionality [Issue #1]`
+
+**PR Validation:** The CI pipeline validates PR titles - they MUST include a type prefix or the validation will fail.
 
 ## Architecture Overview
 
