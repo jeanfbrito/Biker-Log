@@ -177,3 +177,14 @@ Tests focus on critical data integrity, particularly:
 - Sensor data is logged raw; calibration transformation applied in post-processing
 - UI updates use StateFlow for reactive state management
 - Service binding ensures UI-Service synchronization
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
+
+## Sleep Command Guidelines
+NEVER create sleep commands longer than 30 seconds. If you need to wait longer, use multiple shorter sleep commands instead of one long command.
+- Good: `sleep 30` or multiple `sleep 30` commands  
+- Bad: `sleep 60`, `sleep 120`, or any sleep > 30 seconds

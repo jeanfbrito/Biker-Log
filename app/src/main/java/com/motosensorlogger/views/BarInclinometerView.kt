@@ -5,6 +5,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.abs
+import java.util.Locale
 
 /**
  * Bar-style Inclinometer view with vertical pitch and horizontal roll bars
@@ -396,7 +397,7 @@ class BarInclinometerView
                     else -> barFillColorNormal
                 }
             valuePaint.textSize = 35f
-            canvas.drawText(String.format("%+.1f°", pitch), width - 80f, 50f, valuePaint)
+            canvas.drawText(String.format(Locale.getDefault(), "%+.1f°", pitch), width - 80f, 50f, valuePaint)
 
             textPaint.color = Color.GRAY
             textPaint.textSize = 14f
@@ -411,7 +412,7 @@ class BarInclinometerView
                     else -> barFillColorNormal
                 }
             valuePaint.textSize = 35f
-            canvas.drawText(String.format("%+.1f°", roll), width / 2f, height - 100f, valuePaint)
+            canvas.drawText(String.format(Locale.getDefault(), "%+.1f°", roll), width / 2f, height - 100f, valuePaint)
 
             textPaint.color = Color.GRAY
             textPaint.textSize = 14f

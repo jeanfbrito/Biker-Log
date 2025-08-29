@@ -100,6 +100,16 @@
                 android:value=".MainActivity" />
         </activity>
         
+        <activity
+            android:name=".RideAnalysisActivity"
+            android:label="Ride Analysis"
+            android:parentActivityName=".LogViewerActivity"
+            android:screenOrientation="portrait">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".LogViewerActivity" />
+        </activity>
+        
         <!-- High-performance sensor data collection service -->
         <service
             android:name=".services.SensorLoggerService"

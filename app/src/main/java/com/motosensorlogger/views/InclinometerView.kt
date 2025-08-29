@@ -5,6 +5,7 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.min
+import java.util.Locale
 
 /**
  * Reusable Inclinometer view for displaying pitch and roll angles
@@ -287,11 +288,11 @@ class InclinometerView
             textPaint.textSize = 25f
             if (kotlin.math.abs(pitch) > maxAngle) {
                 textPaint.color = Color.RED
-                canvas.drawText(String.format("PITCH: %.1f°", pitch), centerX, centerY - radius - 40, textPaint)
+                canvas.drawText(String.format(Locale.getDefault(), "PITCH: %.1f°", pitch), centerX, centerY - radius - 40, textPaint)
             }
             if (kotlin.math.abs(roll) > 90f) {
                 textPaint.color = Color.RED
-                canvas.drawText(String.format("ROLL: %.1f°", roll), centerX, centerY + radius + 60, textPaint)
+                canvas.drawText(String.format(Locale.getDefault(), "ROLL: %.1f°", roll), centerX, centerY + radius + 60, textPaint)
             }
         }
     }

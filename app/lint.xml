@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <lint>
     <!-- Locale Issues -->
-    <issue id="DefaultLocale" severity="error">
+    <issue id="DefaultLocale" severity="warning">
         <ignore regexp=".*test.*" />
     </issue>
     

@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.util.Locale
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -334,11 +335,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         // Update IMU
         binding.tvImuStatus.text =
             String.format(
+                Locale.getDefault(),
                 "Accel: %.1f, %.1f, %.1f m/s²",
                 lastAccel[0], lastAccel[1], lastAccel[2],
             )
         binding.tvGyroStatus.text =
             String.format(
+                Locale.getDefault(),
                 "Gyro: %.1f, %.1f, %.1f °/s",
                 lastGyro[0], lastGyro[1], lastGyro[2],
             )
@@ -347,6 +350,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         if (magnetometer != null) {
             binding.tvMagStatus.text =
                 String.format(
+                    Locale.getDefault(),
                     "Mag: %.1f, %.1f, %.1f μT",
                     lastMag[0], lastMag[1], lastMag[2],
                 )
@@ -361,6 +365,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                 )
             binding.tvBaroStatus.text =
                 String.format(
+                    Locale.getDefault(),
                     "Pressure: %.1f hPa | Altitude: %.1f m",
                     lastPressure, altitude,
                 )
@@ -390,6 +395,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             // First line: Fix quality and technical details
             binding.tvGpsStatus.text =
                 String.format(
+                    Locale.getDefault(),
                     "Fix: %s | Accuracy: %.1fm | HDOP: %.1f | Speed: %.1f km/h",
                     fixQuality, loc.accuracy, hdop, speedKmh,
                 )
@@ -397,6 +403,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             // Second line: Satellites and coordinates
             binding.tvGpsDetails.text =
                 String.format(
+                    Locale.getDefault(),
                     "Sats: %d/%d | Lat: %.6f° | Lon: %.6f° | Alt: %.0fm | Provider: %s",
                     satellitesUsed, satellitesInView, loc.latitude, loc.longitude, loc.altitude, gpsProvider,
                 )
@@ -404,6 +411,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             binding.tvGpsStatus.text = "Status: No fix | Searching for satellites..."
             binding.tvGpsDetails.text =
                 String.format(
+                    Locale.getDefault(),
                     "Sats: %d/%d visible | Waiting for lock...",
                     satellitesUsed, satellitesInView,
                 )

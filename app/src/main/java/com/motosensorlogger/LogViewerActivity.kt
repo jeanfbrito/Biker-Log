@@ -103,6 +103,8 @@ class LogViewerActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, 1, 0, "Share").setIcon(android.R.drawable.ic_menu_share)
             .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+        menu.add(0, 2, 0, "Analyze").setIcon(android.R.drawable.ic_menu_info_details)
+            .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
         return true
     }
 
@@ -110,6 +112,10 @@ class LogViewerActivity : AppCompatActivity() {
         return when (item.itemId) {
             1 -> {
                 shareFile()
+                true
+            }
+            2 -> {
+                analyzeFile()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -138,6 +144,15 @@ class LogViewerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Toast.makeText(this, "Error sharing file: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    private fun analyzeFile() {
+        currentFile?.let { file ->
+            val intent = Intent(this, RideAnalysisActivity::class.java).apply {
+                putExtra(RideAnalysisActivity.EXTRA_CSV_FILE_PATH, file.absolutePath)
+            }
+            startActivity(intent)
         }
     }
 
