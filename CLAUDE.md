@@ -187,4 +187,4 @@ NEVER proactively create documentation files (*.md) or README files. Only create
 ## Sleep Command Guidelines
 NEVER create sleep commands longer than 30 seconds. If you need to wait longer, use multiple shorter sleep commands instead of one long command.
 - Good: `sleep 30` or multiple `sleep 30` commands  
-- Bad: `sleep 60`, `sleep 120`, or any sleep > 30 seconds
+- Bad: `sleep 60`, `sleep 120`, or any sleep > 30 seconds# Trigger CI
