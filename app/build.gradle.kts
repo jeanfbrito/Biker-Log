@@ -13,8 +13,8 @@ android {
         applicationId = "com.motosensorlogger"
         minSdk = 30 // Android 11 for GNSS status callback support
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.0.3"
+        versionCode = 2
+        versionName = "0.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
