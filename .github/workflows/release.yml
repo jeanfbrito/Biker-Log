@@ -47,7 +47,13 @@ jobs:
       
       - name: Update version in build.gradle
         run: |
+          # Update versionName
           sed -i "s/versionName \"[^\"]*\"/versionName \"${{ steps.version.outputs.version }}\"/" app/build.gradle.kts
+          
+          # Calculate and update versionCode (use patch number + 1 as base)
+          PATCH=$(echo "${{ steps.version.outputs.version }}" | cut -d. -f3)
+          VERSION_CODE=$((PATCH + 1))
+          sed -i "s/versionCode = [0-9]*/versionCode = $VERSION_CODE/" app/build.gradle.kts
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
