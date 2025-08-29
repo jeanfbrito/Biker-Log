@@ -1,5 +1,9 @@
 package com.motosensorlogger.adapters
 
+import android.graphics.Typeface
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.StyleSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +20,7 @@ class LogFileAdapter(
     private val onDeleteClick: (File) -> Unit,
 ) : RecyclerView.Adapter<LogFileAdapter.ViewHolder>() {
     private var files = listOf<File>()
+    private var searchQuery = ""
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -41,7 +46,8 @@ class LogFileAdapter(
     ) {
         val file = files[position]
 
-        holder.tvFileName.text = file.name
+        // Apply search highlighting to filename
+        holder.tvFileName.text = highlightSearchTerm(file.name, searchQuery)
         holder.tvFileDate.text = dateFormat.format(Date(file.lastModified()))
         holder.tvFileSize.text = formatFileSize(file.length())
 
@@ -60,6 +66,12 @@ class LogFileAdapter(
         files = newFiles
         notifyDataSetChanged()
     }
+    
+    fun updateFilesWithSearch(newFiles: List<File>, query: String) {
+        files = newFiles
+        searchQuery = query
+        notifyDataSetChanged()
+    }
 
     private fun formatFileSize(size: Long): String {
         return when {
@@ -67,5 +79,32 @@ class LogFileAdapter(
             size < 1024 * 1024 -> "${size / 1024} KB"
             else -> "${size / (1024 * 1024)} MB"
         }
+    }
+    
+    private fun highlightSearchTerm(text: String, searchQuery: String): CharSequence {
+        if (searchQuery.isEmpty()) {
+            return text
+        }
+        
+        val spannableBuilder = SpannableStringBuilder(text)
+        val searchLower = searchQuery.lowercase()
+        val textLower = text.lowercase()
+        
+        var startIndex = 0
+        while (startIndex < textLower.length) {
+            val index = textLower.indexOf(searchLower, startIndex)
+            if (index == -1) break
+            
+            spannableBuilder.setSpan(
+                StyleSpan(Typeface.BOLD),
+                index,
+                index + searchQuery.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            
+            startIndex = index + searchQuery.length
+        }
+        
+        return spannableBuilder
     }
 }
