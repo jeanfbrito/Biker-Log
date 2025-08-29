@@ -8,7 +8,9 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -23,6 +25,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.text.DecimalFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -38,6 +43,7 @@ class RideAnalysisActivity : AppCompatActivity() {
     
     companion object {
         const val EXTRA_CSV_FILE_PATH = "csv_file_path"
+        const val EXTRA_CACHED_RESULTS_PATH = "cached_results_path"
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -289,6 +295,10 @@ class RideAnalysisActivity : AppCompatActivity() {
                 onBackPressed()
                 true
             }
+            R.id.action_info -> {
+                showRideDetailsDialog()
+                true
+            }
             R.id.action_share_text -> {
                 shareAsText()
                 true
@@ -302,6 +312,59 @@ class RideAnalysisActivity : AppCompatActivity() {
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+    
+    private fun showRideDetailsDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_ride_details, null)
+        val file = csvFile ?: return
+        val result = processingResult
+        
+        // Populate file information
+        dialogView.findViewById<TextView>(R.id.filenameValue).text = file.name
+        dialogView.findViewById<TextView>(R.id.fileSizeValue).text = formatFileSize(file.length())
+        dialogView.findViewById<TextView>(R.id.dataPointsValue).text = 
+            result?.statistics?.totalDataPoints?.toString() ?: "N/A"
+        
+        // Populate sensor data counts
+        dialogView.findViewById<TextView>(R.id.imuSamplesValue).text = 
+            "${result?.statistics?.imuSamples ?: 0} @ 100Hz"
+        dialogView.findViewById<TextView>(R.id.gpsSamplesValue).text = 
+            "${result?.statistics?.gpsSamples ?: 0} @ 5Hz"
+        dialogView.findViewById<TextView>(R.id.magSamplesValue).text = 
+            "${result?.statistics?.magnetometerSamples ?: 0} @ 25Hz"
+        dialogView.findViewById<TextView>(R.id.baroSamplesValue).text = 
+            "${result?.statistics?.barometerSamples ?: 0} @ 25Hz"
+        
+        // Populate recording information
+        val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val fullDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+        
+        dialogView.findViewById<TextView>(R.id.startTimeValue).text = 
+            result?.statistics?.startTime?.let { dateFormat.format(Date(it)) } ?: "N/A"
+        dialogView.findViewById<TextView>(R.id.endTimeValue).text = 
+            result?.statistics?.endTime?.let { dateFormat.format(Date(it)) } ?: "N/A"
+        dialogView.findViewById<TextView>(R.id.recordingDateValue).text = 
+            result?.statistics?.startTime?.let { fullDateFormat.format(Date(it)) } ?: "N/A"
+        dialogView.findViewById<TextView>(R.id.totalDurationValue).text = 
+            formatDuration(result?.statistics?.rideDuration ?: 0L)
+        
+        // Processing stats
+        dialogView.findViewById<TextView>(R.id.processingTimeValue).text = 
+            "${result?.processingTimeMs ?: 0} ms"
+        dialogView.findViewById<TextView>(R.id.analyzedTimeValue).text = "Just now"
+        
+        AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("Close", null)
+            .show()
+    }
+    
+    private fun formatFileSize(size: Long): String {
+        return when {
+            size < 1024 -> "$size B"
+            size < 1024 * 1024 -> "${decimalFormat.format(size / 1024.0)} KB"
+            else -> "${decimalFormat.format(size / (1024.0 * 1024.0))} MB"
         }
     }
     

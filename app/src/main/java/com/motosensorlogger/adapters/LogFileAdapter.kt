@@ -18,6 +18,7 @@ import java.util.*
 class LogFileAdapter(
     private val onItemClick: (File) -> Unit,
     private val onDeleteClick: (File) -> Unit,
+    private val onItemLongClick: ((File) -> Unit)? = null,
 ) : RecyclerView.Adapter<LogFileAdapter.ViewHolder>() {
     private var files = listOf<File>()
     private var searchQuery = ""
@@ -53,6 +54,11 @@ class LogFileAdapter(
 
         holder.itemView.setOnClickListener {
             onItemClick(file)
+        }
+        
+        holder.itemView.setOnLongClickListener {
+            onItemLongClick?.invoke(file)
+            true
         }
 
         holder.btnDelete.setOnClickListener {

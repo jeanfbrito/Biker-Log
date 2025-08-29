@@ -19,11 +19,20 @@ data class RideStatistics(
     val startTime: Long,
     val endTime: Long,
     val startLocation: GpsLocation?,
-    val endLocation: GpsLocation?
+    val endLocation: GpsLocation?,
+    // Data counts for info dialog
+    val totalDataPoints: Int = 0,
+    val imuSamples: Int = 0,
+    val gpsSamples: Int = 0,
+    val magnetometerSamples: Int = 0,
+    val barometerSamples: Int = 0
 ) {
     fun getAverageSpeedKmh() = averageSpeed * 3.6
     fun getMaxSpeedKmh() = maxSpeed * 3.6
     fun getDistanceKm() = distance / 1000.0
+    val rideDuration: Long
+        get() = duration
+    
     fun getDurationFormatted(): String {
         val hours = duration / 3600000
         val minutes = (duration % 3600000) / 60000
