@@ -1,7 +1,6 @@
 package com.motosensorlogger.data
 
-import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
+// Using basic JSON serialization without external libraries
 
 /**
  * Data models for the data processing pipeline
@@ -187,25 +186,37 @@ data class DetectedEvent(
  * Complete results from data processing pipeline
  */
 data class ProcessingResult(
-    @SerializedName("file_info")
     val fileInfo: FileInfo,
-    @SerializedName("processing_time")
     val processingTime: Long,
-    @SerializedName("sample_counts")
     val sampleCounts: Map<SensorType, Int>,
-    @SerializedName("derived_metrics")
     val derivedMetrics: DerivedMetrics,
-    @SerializedName("segments")
     val segments: List<RideSegment>,
-    @SerializedName("statistics")
     val statistics: RideStatistics,
-    @SerializedName("errors")
     val errors: List<ProcessingError>
 ) {
-    fun toJson(): String = Gson().toJson(this)
-    
-    companion object {
-        fun fromJson(json: String): ProcessingResult = Gson().fromJson(json, ProcessingResult::class.java)
+    fun toJson(): String {
+        // Simple JSON serialization for basic export needs
+        return buildString {
+            append("{\n")
+            append("  \"file_info\": {\n")
+            append("    \"fileName\": \"${fileInfo.fileName}\",\n")
+            append("    \"fileSizeBytes\": ${fileInfo.fileSizeBytes},\n")
+            append("    \"isCalibrated\": ${fileInfo.isCalibrated}\n")
+            append("  },\n")
+            append("  \"processing_time\": $processingTime,\n")
+            append("  \"sample_counts\": {\n")
+            sampleCounts.entries.joinToString(",\n") { (type, count) ->
+                "    \"${type.code}\": $count"
+            }.let { append(it) }
+            append("\n  },\n")
+            append("  \"statistics\": {\n")
+            append("    \"totalDistance\": ${statistics.totalDistance},\n")
+            append("    \"maxSpeed\": ${statistics.maxSpeed},\n")
+            append("    \"maxLeanAngle\": ${statistics.maxLeanAngle},\n")
+            append("    \"specialEventsCount\": ${statistics.specialEvents.size}\n")
+            append("  }\n")
+            append("}")
+        }
     }
 }
 
@@ -252,13 +263,9 @@ data class ProcessingError(
  * Simplified export format for external analysis
  */
 data class ExportData(
-    @SerializedName("ride_info")
     val rideInfo: RideInfo,
-    @SerializedName("summary_stats")
     val summaryStats: SummaryStats,
-    @SerializedName("time_series")
     val timeSeries: TimeSeriesData,
-    @SerializedName("events")
     val events: List<EventSummary>
 )
 

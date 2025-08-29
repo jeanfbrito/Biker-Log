@@ -2,6 +2,7 @@ package com.motosensorlogger.data
 
 import android.util.Log
 import com.motosensorlogger.calibration.CalibrationData
+import com.motosensorlogger.calibration.CalibrationQuality
 import com.opencsv.CSVReader
 import kotlinx.coroutines.yield
 import java.io.File
@@ -209,11 +210,18 @@ class CsvParser {
             val calibrationString = headerContent.removePrefix(HEADER_CALIBRATION_PREFIX).trim()
             val parts = calibrationString.split(",")
             
-            var quality = CalibrationData.Quality.UNKNOWN
+            var qualityScore = 50f
             var referencePitch = 0f
             var referenceRoll = 0f
+            var referenceAzimuth = 0f
+            var referenceGravity = FloatArray(3) { if (it == 2) 9.81f else 0f } // Default gravity down
+            var referenceMagnetic = FloatArray(3) { 0f }
             var referenceRotationMatrix = FloatArray(9) { if (it % 4 == 0) 1f else 0f } // Identity matrix
+            var referenceQuaternion = FloatArray(4) { if (it == 0) 1f else 0f } // Identity quaternion
+            var gyroscopeBias = FloatArray(3) { 0f }
             var timestamp = System.currentTimeMillis()
+            var duration = 3000L
+            var sampleCount = 100
             
             for (part in parts) {
                 val keyValue = part.split("=", limit = 2)
@@ -223,12 +231,8 @@ class CsvParser {
                 val value = keyValue[1].trim()
                 
                 when (key.lowercase()) {
-                    "quality" -> {
-                        quality = try {
-                            CalibrationData.Quality.valueOf(value.uppercase())
-                        } catch (e: IllegalArgumentException) {
-                            CalibrationData.Quality.UNKNOWN
-                        }
+                    "quality", "score" -> {
+                        qualityScore = value.toFloatOrNull() ?: 50f
                     }
                     "pitch" -> {
                         referencePitch = value.toFloatOrNull() ?: 0f
@@ -236,8 +240,17 @@ class CsvParser {
                     "roll" -> {
                         referenceRoll = value.toFloatOrNull() ?: 0f
                     }
+                    "azimuth", "yaw" -> {
+                        referenceAzimuth = value.toFloatOrNull() ?: 0f
+                    }
                     "timestamp" -> {
                         timestamp = value.toLongOrNull() ?: System.currentTimeMillis()
+                    }
+                    "duration" -> {
+                        duration = value.toLongOrNull() ?: 3000L
+                    }
+                    "samples" -> {
+                        sampleCount = value.toIntOrNull() ?: 100
                     }
                     "matrix" -> {
                         // Parse rotation matrix from string like "[1,0,0,0,1,0,0,0,1]"
@@ -247,15 +260,37 @@ class CsvParser {
                             referenceRotationMatrix = matrixValues.toFloatArray()
                         }
                     }
+                    "gravity" -> {
+                        val gravityStr = value.removePrefix("[").removeSuffix("]")
+                        val gravityValues = gravityStr.split(",").mapNotNull { it.trim().toFloatOrNull() }
+                        if (gravityValues.size == 3) {
+                            referenceGravity = gravityValues.toFloatArray()
+                        }
+                    }
                 }
             }
             
+            val calibrationQuality = CalibrationQuality(
+                overallScore = qualityScore,
+                stabilityScore = qualityScore * 0.9f,
+                magneticFieldQuality = qualityScore * 0.8f,
+                gravityConsistency = qualityScore * 0.9f,
+                isAcceptable = qualityScore >= 60f
+            )
+            
             return CalibrationData(
-                quality = quality,
+                referenceGravity = referenceGravity,
+                referenceMagnetic = referenceMagnetic,
+                referenceRotationMatrix = referenceRotationMatrix,
+                referenceQuaternion = referenceQuaternion,
                 referencePitch = referencePitch,
                 referenceRoll = referenceRoll,
-                referenceRotationMatrix = referenceRotationMatrix,
-                timestamp = timestamp
+                referenceAzimuth = referenceAzimuth,
+                gyroscopeBias = gyroscopeBias,
+                timestamp = timestamp,
+                duration = duration,
+                sampleCount = sampleCount,
+                quality = calibrationQuality
             )
             
         } catch (e: Exception) {

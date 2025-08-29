@@ -101,7 +101,7 @@ class DataProcessingPipeline {
                 recordingStartTime = parseResult.recordingStartTime,
                 recordingEndTime = parseResult.recordingEndTime,
                 isCalibrated = parseResult.calibrationData != null,
-                calibrationQuality = parseResult.calibrationData?.quality?.name
+                calibrationQuality = parseResult.calibrationData?.quality?.getQualityLevel()?.name
             )
             
             ProcessingResult(
@@ -301,8 +301,19 @@ class DataProcessingPipeline {
 /**
  * Extension function to export data as JSON
  */
-private fun ExportData.toJson(): String = 
-    com.google.gson.GsonBuilder()
-        .setPrettyPrinting()
-        .create()
-        .toJson(this)
+private fun ExportData.toJson(): String {
+    // Simple JSON serialization for export data
+    return buildString {
+        append("{\n")
+        append("  \"ride_info\": {\n")
+        append("    \"fileName\": \"${rideInfo.fileName}\",\n")
+        append("    \"distance\": ${rideInfo.distance}\n")
+        append("  },\n")
+        append("  \"summary_stats\": {\n")
+        append("    \"maxSpeed\": ${summaryStats.maxSpeed},\n")
+        append("    \"maxLeanAngle\": ${summaryStats.maxLeanAngle}\n")
+        append("  },\n")
+        append("  \"events_count\": ${events.size}\n")
+        append("}")
+    }
+}
