@@ -79,15 +79,7 @@ android {
         buildConfig = true
     }
 
-    lint {
-        warningsAsErrors = false
-        abortOnError = false
-        checkDependencies = true
-        disable += listOf("ObsoleteLintCustomCheck")
-        // TODO: Enable strict lint checking after fixing existing issues
-        // warningsAsErrors = true
-        // abortOnError = true
-    }
+    // Lint configuration moved below to avoid duplicate blocks
 
     // Performance packaging options
     packaging {
@@ -99,13 +91,14 @@ android {
     lint {
         // Use custom lint configuration
         lintConfig = file("lint.xml")
-        // Treat these as errors
-        // error += "DefaultLocale"  // Temporarily disabled - existing codebase issues
-        error += "StringFormatInvalid"
-        // Check dependencies
+        // Basic lint settings
+        warningsAsErrors = false
+        abortOnError = false
         checkDependencies = true
-        // Abort on error for release builds
-        abortOnError = false // Set to true for CI/CD
+        disable += listOf("ObsoleteLintCustomCheck")
+        // Treat these as errors (disabled DefaultLocale due to existing codebase issues)
+        // error += "DefaultLocale"  // Temporarily disabled - existing codebase issues  
+        error += "StringFormatInvalid"
         // Generate HTML report
         htmlReport = true
         htmlOutput = file("build/reports/lint-results-debug.html")
