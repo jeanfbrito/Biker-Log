@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <item
+        android:id="@+id/nav_home"
+        android:icon="@android:drawable/ic_media_play"
+        android:title="Recording" />
+    
+    <item
+        android:id="@+id/nav_logs"
+        android:icon="@android:drawable/ic_menu_info_details"
+        android:title="Logs" />
+    
+    <item
+        android:id="@+id/nav_telemetry"
+        android:icon="@android:drawable/ic_menu_info_details"
+        android:title="Telemetry" />
+    
+    <item
+        android:id="@+id/nav_settings"
+        android:icon="@android:drawable/ic_menu_preferences"
+        android:title="Settings" />
+    
+</menu>

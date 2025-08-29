@@ -150,7 +150,7 @@ class LogViewerActivity : AppCompatActivity() {
     private fun analyzeFile() {
         currentFile?.let { file ->
             val intent = Intent(this, RideAnalysisActivity::class.java).apply {
-                putExtra(RideAnalysisActivity.EXTRA_FILE_PATH, file.absolutePath)
+                putExtra(RideAnalysisActivity.EXTRA_CSV_FILE_PATH, file.absolutePath)
             }
             startActivity(intent)
         }
