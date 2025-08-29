@@ -108,7 +108,7 @@ android {
         abortOnError = false // Set to true for CI/CD
         // Generate HTML report
         htmlReport = true
-        htmlOutput = file("build/reports/lint-results.html")
+        htmlOutput = file("build/reports/lint-results-debug.html")
     }
 }
 
