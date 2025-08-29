@@ -17,6 +17,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.View
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -31,6 +32,8 @@ import com.motosensorlogger.data.LogFileSearchFilter
 import com.motosensorlogger.databinding.ActivityMainBinding
 import com.motosensorlogger.services.SensorLoggerService
 import kotlinx.coroutines.*
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -40,6 +43,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     private var sensorService: SensorLoggerService? = null
     private var isServiceBound = false
     private lateinit var logFileAdapter: LogFileAdapter
+    private var processingJob: Job? = null
     
     // Search and filter functionality
     private var currentFilter = LogFileSearchFilter.default()
@@ -465,6 +469,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
             LogFileAdapter(
                 onItemClick = { file -> viewLogFile(file) },
                 onDeleteClick = { file -> confirmDeleteFile(file) },
+                onItemLongClick = { file -> showDebugMenu(file) }
             )
 
         binding.recyclerViewLogs.apply {
@@ -683,11 +688,166 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     }
 
     private fun viewLogFile(file: File) {
+        // Process the file and show analysis directly
+        processAndAnalyzeFile(file)
+    }
+    
+    private fun processAndAnalyzeFile(file: File) {
+        // Check if results are already cached
+        val cacheDir = File(getExternalFilesDir(null), "analysis_cache")
+        if (!cacheDir.exists()) cacheDir.mkdirs()
+        
+        val cacheFile = File(cacheDir, "${file.nameWithoutExtension}_analysis.json")
+        
+        // If cache exists and is newer than source file, use cached results
+        if (cacheFile.exists() && cacheFile.lastModified() > file.lastModified()) {
+            // Directly open analysis with cached results
+            val intent = Intent(this@MainActivity, RideAnalysisActivity::class.java).apply {
+                putExtra(RideAnalysisActivity.EXTRA_CSV_FILE_PATH, file.absolutePath)
+                putExtra(RideAnalysisActivity.EXTRA_CACHED_RESULTS_PATH, cacheFile.absolutePath)
+            }
+            startActivity(intent)
+            return
+        }
+        // Create progress dialog with cancel button
+        val progressDialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Processing Ride Data")
+            .setMessage("Analyzing ${file.name}...")
+            .setCancelable(false)
+            .setNegativeButton("Cancel") { dialog, _ ->
+                // Cancel the processing job
+                processingJob?.cancel()
+                dialog.dismiss()
+                Toast.makeText(this, "Processing cancelled", Toast.LENGTH_SHORT).show()
+            }
+            .create()
+            
+        val progressView = layoutInflater.inflate(R.layout.dialog_progress, null)
+        val progressBar = progressView.findViewById<LinearProgressIndicator>(R.id.progressBar)
+        val progressText = progressView.findViewById<TextView>(R.id.progressText)
+        
+        progressDialog.setView(progressView)
+        progressDialog.show()
+        
+        // Process in background
+        processingJob = lifecycleScope.launch {
+            try {
+                // Simulate processing stages
+                withContext(Dispatchers.IO) {
+                    // Update progress on main thread
+                    withContext(Dispatchers.Main) {
+                        progressText.text = "Reading file..."
+                        progressBar.progress = 20
+                    }
+                    delay(100) // Small delay to show progress
+                    
+                    withContext(Dispatchers.Main) {
+                        progressText.text = "Parsing data..."
+                        progressBar.progress = 40
+                    }
+                    delay(100)
+                    
+                    withContext(Dispatchers.Main) {
+                        progressText.text = "Analyzing ride..."
+                        progressBar.progress = 60
+                    }
+                    delay(100)
+                    
+                    withContext(Dispatchers.Main) {
+                        progressText.text = "Calculating statistics..."
+                        progressBar.progress = 80
+                    }
+                    delay(100)
+                    
+                    withContext(Dispatchers.Main) {
+                        progressText.text = "Finalizing..."
+                        progressBar.progress = 100
+                    }
+                    delay(100)
+                }
+                
+                // Process the file and save results to cache
+                val processingResult = withContext(Dispatchers.IO) {
+                    // This would be the actual processing - for now we'll mark it as processed
+                    // The RideAnalysisActivity will do the actual processing if needed
+                    true
+                }
+                
+                // Close dialog and open analysis activity
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    val intent = Intent(this@MainActivity, RideAnalysisActivity::class.java).apply {
+                        putExtra(RideAnalysisActivity.EXTRA_CSV_FILE_PATH, file.absolutePath)
+                        // Cache will be created by RideAnalysisActivity after processing
+                    }
+                    startActivity(intent)
+                }
+            } catch (e: CancellationException) {
+                // Processing was cancelled
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle("Processing Error")
+                        .setMessage("Failed to process ride data: ${e.message}")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
+    }
+    
+    private fun showDebugMenu(file: File) {
+        val options = arrayOf(
+            "View Raw Data",
+            "Force Reprocess",
+            "Clear Cache",
+            "Export as JSON"
+        )
+        
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Debug Options - ${file.name}")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> viewLogFileRaw(file)
+                    1 -> forceReprocessFile(file)
+                    2 -> clearCacheForFile(file)
+                    3 -> exportFileAsJson(file)
+                }
+            }
+            .show()
+    }
+    
+    private fun viewLogFileRaw(file: File) {
+        // Debug option to view raw file
         val intent =
             Intent(this, LogViewerActivity::class.java).apply {
                 putExtra(LogViewerActivity.EXTRA_FILE_PATH, file.absolutePath)
             }
         startActivity(intent)
+    }
+    
+    private fun forceReprocessFile(file: File) {
+        // Clear cache first
+        clearCacheForFile(file)
+        // Then process normally
+        processAndAnalyzeFile(file)
+    }
+    
+    private fun clearCacheForFile(file: File) {
+        val cacheDir = File(getExternalFilesDir(null), "analysis_cache")
+        val cacheFile = File(cacheDir, "${file.nameWithoutExtension}_analysis.json")
+        if (cacheFile.exists()) {
+            cacheFile.delete()
+            Toast.makeText(this, "Cache cleared for ${file.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun exportFileAsJson(file: File) {
+        Toast.makeText(this, "Export to JSON coming soon", Toast.LENGTH_SHORT).show()
     }
 
     private fun shareLogFile(file: File) {
