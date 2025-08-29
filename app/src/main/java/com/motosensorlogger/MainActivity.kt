@@ -1,6 +1,7 @@
 package com.motosensorlogger
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.content.*
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -12,6 +13,8 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.*
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.widget.Toast
@@ -23,10 +26,12 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.motosensorlogger.adapters.LogFileAdapter
 import com.motosensorlogger.calibration.CalibrationService
+import com.motosensorlogger.data.LogFileSearchFilter
 import com.motosensorlogger.databinding.ActivityMainBinding
 import com.motosensorlogger.services.SensorLoggerService
 import kotlinx.coroutines.*
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.*
 
 class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener {
@@ -34,6 +39,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     private var sensorService: SensorLoggerService? = null
     private var isServiceBound = false
     private lateinit var logFileAdapter: LogFileAdapter
+    
+    // Search and filter functionality
+    private var currentFilter = LogFileSearchFilter.default()
+    private var allLogFiles = listOf<File>()
+    private lateinit var sharedPreferences: SharedPreferences
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private var isFilterExpanded = false
 
     // Sensor monitoring
     private lateinit var sensorManager: SensorManager
@@ -122,6 +134,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Initialize SharedPreferences
+        sharedPreferences = getSharedPreferences("log_filters", Context.MODE_PRIVATE)
+
         // Initialize sensors
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -134,8 +149,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
         setupUI()
         setupSensorStatusCard()
         setupBottomNavigation()
+        setupSearchAndFilter()
         checkPermissions()
         setupRecyclerView()
+        loadSavedFilters()
     }
 
     private fun setupUI() {
@@ -634,20 +651,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
     }
 
     private fun refreshLogsList() {
-        val logFiles = getLogFiles()
-        Log.d("MainActivity", "Found ${logFiles.size} log files")
-        logFileAdapter.updateFiles(logFiles)
+        allLogFiles = getAllLogFiles()
+        val filteredFiles = applyFilters(allLogFiles, currentFilter)
+        Log.d("MainActivity", "Found ${allLogFiles.size} log files, ${filteredFiles.size} after filtering")
+        
+        logFileAdapter.updateFilesWithSearch(filteredFiles, currentFilter.searchQuery)
 
-        binding.tvLogsCount.text = "Log Files: ${logFiles.size}"
+        binding.tvLogsCount.text = "Log Files: ${filteredFiles.size}${if (filteredFiles.size != allLogFiles.size) " of ${allLogFiles.size}" else ""}"
+        
+        // Update clear filters button visibility
+        binding.btnClearFilters.visibility = if (currentFilter.hasActiveFilters()) View.VISIBLE else View.GONE
     }
 
-    private fun getLogFiles(): List<File> {
+    private fun getAllLogFiles(): List<File> {
         val documentsDir = getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
         val logDir = File(documentsDir, "MotoSensorLogs")
 
         return logDir.listFiles { file -> file.extension == "csv" }
-            ?.sortedByDescending { it.lastModified() }
-            ?: emptyList()
+            ?.toList() ?: emptyList()
     }
 
     private fun viewLogFile(file: File) {
@@ -949,6 +970,312 @@ class MainActivity : AppCompatActivity(), SensorEventListener, LocationListener 
                 }
             }
         }
+    }
+
+    private fun setupSearchAndFilter() {
+        // Search text watcher with debounce
+        var searchJob: Job? = null
+        binding.etSearchQuery.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                searchJob?.cancel()
+                searchJob = updateScope.launch {
+                    delay(300) // Debounce 300ms
+                    currentFilter = currentFilter.copy(searchQuery = s?.toString() ?: "")
+                    refreshLogsList()
+                    saveFilters()
+                }
+            }
+        })
+
+        // Filter toggle button
+        binding.btnToggleFilters.setOnClickListener {
+            isFilterExpanded = !isFilterExpanded
+            binding.llFilterOptions.visibility = if (isFilterExpanded) View.VISIBLE else View.GONE
+            binding.btnToggleFilters.text = if (isFilterExpanded) getString(R.string.hide_filters) else getString(R.string.filters)
+        }
+
+        // Sort button
+        binding.btnSort.setOnClickListener {
+            showSortDialog()
+        }
+
+        // Clear filters button
+        binding.btnClearFilters.setOnClickListener {
+            clearAllFilters()
+        }
+
+        // Date pickers
+        binding.etDateFrom.setOnClickListener {
+            showDatePicker(true)
+        }
+        
+        binding.etDateTo.setOnClickListener {
+            showDatePicker(false)
+        }
+
+        // Size filter text watchers
+        var minSizeJob: Job? = null
+        binding.etMinSize.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                minSizeJob?.cancel()
+                minSizeJob = updateScope.launch {
+                    delay(500)
+                    val sizeInMB = s?.toString()?.toFloatOrNull() ?: 0f
+                    currentFilter = currentFilter.copy(minFileSizeBytes = (sizeInMB * 1024 * 1024).toLong())
+                    refreshLogsList()
+                    saveFilters()
+                }
+            }
+        })
+
+        var maxSizeJob: Job? = null
+        binding.etMaxSize.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                maxSizeJob?.cancel()
+                maxSizeJob = updateScope.launch {
+                    delay(500)
+                    val sizeInMB = s?.toString()?.toFloatOrNull() ?: Float.MAX_VALUE
+                    val sizeInBytes = if (sizeInMB == Float.MAX_VALUE) Long.MAX_VALUE else (sizeInMB * 1024 * 1024).toLong()
+                    currentFilter = currentFilter.copy(maxFileSizeBytes = sizeInBytes)
+                    refreshLogsList()
+                    saveFilters()
+                }
+            }
+        })
+    }
+
+    private fun applyFilters(files: List<File>, filter: LogFileSearchFilter): List<File> {
+        var filteredFiles = files
+
+        // Apply filename search
+        if (filter.searchQuery.isNotEmpty()) {
+            filteredFiles = filteredFiles.filter { file ->
+                file.name.lowercase().contains(filter.searchQuery.lowercase())
+            }
+        }
+
+        // Apply date range filter
+        filter.dateFrom?.let { fromDate ->
+            filteredFiles = filteredFiles.filter { file ->
+                Date(file.lastModified()) >= fromDate
+            }
+        }
+        
+        filter.dateTo?.let { toDate ->
+            // Add one day to include the entire "to" date
+            val endOfToDate = Calendar.getInstance().apply {
+                time = toDate
+                add(Calendar.DAY_OF_MONTH, 1)
+                add(Calendar.MILLISECOND, -1)
+            }.time
+            
+            filteredFiles = filteredFiles.filter { file ->
+                Date(file.lastModified()) <= endOfToDate
+            }
+        }
+
+        // Apply file size filter
+        if (filter.minFileSizeBytes > 0L) {
+            filteredFiles = filteredFiles.filter { file ->
+                file.length() >= filter.minFileSizeBytes
+            }
+        }
+        
+        if (filter.maxFileSizeBytes < Long.MAX_VALUE) {
+            filteredFiles = filteredFiles.filter { file ->
+                file.length() <= filter.maxFileSizeBytes
+            }
+        }
+
+        // Apply sorting
+        return when (filter.sortBy) {
+            LogFileSearchFilter.SortBy.NAME -> {
+                if (filter.sortOrder == LogFileSearchFilter.SortOrder.ASCENDING) {
+                    filteredFiles.sortedBy { it.name }
+                } else {
+                    filteredFiles.sortedByDescending { it.name }
+                }
+            }
+            LogFileSearchFilter.SortBy.DATE -> {
+                if (filter.sortOrder == LogFileSearchFilter.SortOrder.ASCENDING) {
+                    filteredFiles.sortedBy { it.lastModified() }
+                } else {
+                    filteredFiles.sortedByDescending { it.lastModified() }
+                }
+            }
+            LogFileSearchFilter.SortBy.SIZE -> {
+                if (filter.sortOrder == LogFileSearchFilter.SortOrder.ASCENDING) {
+                    filteredFiles.sortedBy { it.length() }
+                } else {
+                    filteredFiles.sortedByDescending { it.length() }
+                }
+            }
+        }
+    }
+
+    private fun showDatePicker(isFromDate: Boolean) {
+        val calendar = Calendar.getInstance()
+        
+        // Set initial date if already selected
+        val currentDate = if (isFromDate) currentFilter.dateFrom else currentFilter.dateTo
+        currentDate?.let { calendar.time = it }
+
+        DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                calendar.set(year, month, dayOfMonth)
+                val selectedDate = calendar.time
+                
+                currentFilter = if (isFromDate) {
+                    binding.etDateFrom.setText(dateFormat.format(selectedDate))
+                    currentFilter.copy(dateFrom = selectedDate)
+                } else {
+                    binding.etDateTo.setText(dateFormat.format(selectedDate))
+                    currentFilter.copy(dateTo = selectedDate)
+                }
+                
+                refreshLogsList()
+                saveFilters()
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    private fun showSortDialog() {
+        val sortOptions = arrayOf(
+            getString(R.string.sort_name_asc), getString(R.string.sort_name_desc),
+            getString(R.string.sort_date_newest), getString(R.string.sort_date_oldest), 
+            getString(R.string.sort_size_largest), getString(R.string.sort_size_smallest)
+        )
+        
+        val currentSelection = when (currentFilter.sortBy to currentFilter.sortOrder) {
+            LogFileSearchFilter.SortBy.NAME to LogFileSearchFilter.SortOrder.ASCENDING -> 0
+            LogFileSearchFilter.SortBy.NAME to LogFileSearchFilter.SortOrder.DESCENDING -> 1
+            LogFileSearchFilter.SortBy.DATE to LogFileSearchFilter.SortOrder.DESCENDING -> 2
+            LogFileSearchFilter.SortBy.DATE to LogFileSearchFilter.SortOrder.ASCENDING -> 3
+            LogFileSearchFilter.SortBy.SIZE to LogFileSearchFilter.SortOrder.DESCENDING -> 4
+            LogFileSearchFilter.SortBy.SIZE to LogFileSearchFilter.SortOrder.ASCENDING -> 5
+            else -> 2 // Default to Date (Newest)
+        }
+        
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.sort_files))
+            .setSingleChoiceItems(sortOptions, currentSelection) { dialog, which ->
+                currentFilter = when (which) {
+                    0 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.NAME, sortOrder = LogFileSearchFilter.SortOrder.ASCENDING)
+                    1 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.NAME, sortOrder = LogFileSearchFilter.SortOrder.DESCENDING)
+                    2 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.DATE, sortOrder = LogFileSearchFilter.SortOrder.DESCENDING)
+                    3 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.DATE, sortOrder = LogFileSearchFilter.SortOrder.ASCENDING)
+                    4 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.SIZE, sortOrder = LogFileSearchFilter.SortOrder.DESCENDING)
+                    5 -> currentFilter.copy(sortBy = LogFileSearchFilter.SortBy.SIZE, sortOrder = LogFileSearchFilter.SortOrder.ASCENDING)
+                    else -> currentFilter
+                }
+                
+                updateSortButtonText()
+                refreshLogsList()
+                saveFilters()
+                dialog.dismiss()
+            }
+            .show()
+    }
+    
+    private fun updateSortButtonText() {
+        val sortText = when (currentFilter.sortBy to currentFilter.sortOrder) {
+            LogFileSearchFilter.SortBy.NAME to LogFileSearchFilter.SortOrder.ASCENDING -> getString(R.string.sort_name_asc_btn)
+            LogFileSearchFilter.SortBy.NAME to LogFileSearchFilter.SortOrder.DESCENDING -> getString(R.string.sort_name_desc_btn)
+            LogFileSearchFilter.SortBy.DATE to LogFileSearchFilter.SortOrder.ASCENDING -> getString(R.string.sort_date_asc)
+            LogFileSearchFilter.SortBy.DATE to LogFileSearchFilter.SortOrder.DESCENDING -> getString(R.string.sort_date_desc)
+            LogFileSearchFilter.SortBy.SIZE to LogFileSearchFilter.SortOrder.ASCENDING -> getString(R.string.sort_size_asc_btn)
+            LogFileSearchFilter.SortBy.SIZE to LogFileSearchFilter.SortOrder.DESCENDING -> getString(R.string.sort_size_desc_btn)
+            else -> getString(R.string.sort_date_desc)
+        }
+        binding.btnSort.text = sortText
+    }
+
+    private fun clearAllFilters() {
+        currentFilter = LogFileSearchFilter.default()
+        
+        // Clear UI fields
+        binding.etSearchQuery.setText("")
+        binding.etDateFrom.setText("")
+        binding.etDateTo.setText("")
+        binding.etMinSize.setText("")
+        binding.etMaxSize.setText("")
+        
+        updateSortButtonText()
+        refreshLogsList()
+        saveFilters()
+        
+        Toast.makeText(this, getString(R.string.all_filters_cleared), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveFilters() {
+        with(sharedPreferences.edit()) {
+            putString("search_query", currentFilter.searchQuery)
+            putLong("date_from", currentFilter.dateFrom?.time ?: -1L)
+            putLong("date_to", currentFilter.dateTo?.time ?: -1L)
+            putLong("min_size_bytes", currentFilter.minFileSizeBytes)
+            putLong("max_size_bytes", currentFilter.maxFileSizeBytes)
+            putString("sort_by", currentFilter.sortBy.name)
+            putString("sort_order", currentFilter.sortOrder.name)
+            apply()
+        }
+    }
+
+    private fun loadSavedFilters() {
+        val searchQuery = sharedPreferences.getString("search_query", "") ?: ""
+        val dateFromMs = sharedPreferences.getLong("date_from", -1L)
+        val dateToMs = sharedPreferences.getLong("date_to", -1L)
+        val minSizeBytes = sharedPreferences.getLong("min_size_bytes", 0L)
+        val maxSizeBytes = sharedPreferences.getLong("max_size_bytes", Long.MAX_VALUE)
+        val sortByStr = sharedPreferences.getString("sort_by", LogFileSearchFilter.SortBy.DATE.name) ?: LogFileSearchFilter.SortBy.DATE.name
+        val sortOrderStr = sharedPreferences.getString("sort_order", LogFileSearchFilter.SortOrder.DESCENDING.name) ?: LogFileSearchFilter.SortOrder.DESCENDING.name
+        
+        val dateFrom = if (dateFromMs != -1L) Date(dateFromMs) else null
+        val dateTo = if (dateToMs != -1L) Date(dateToMs) else null
+        
+        val sortBy = try { 
+            LogFileSearchFilter.SortBy.valueOf(sortByStr) 
+        } catch (e: Exception) { 
+            LogFileSearchFilter.SortBy.DATE 
+        }
+        
+        val sortOrder = try { 
+            LogFileSearchFilter.SortOrder.valueOf(sortOrderStr) 
+        } catch (e: Exception) { 
+            LogFileSearchFilter.SortOrder.DESCENDING 
+        }
+        
+        currentFilter = LogFileSearchFilter(
+            searchQuery = searchQuery,
+            dateFrom = dateFrom,
+            dateTo = dateTo,
+            minFileSizeBytes = minSizeBytes,
+            maxFileSizeBytes = maxSizeBytes,
+            sortBy = sortBy,
+            sortOrder = sortOrder
+        )
+        
+        // Update UI fields
+        binding.etSearchQuery.setText(searchQuery)
+        dateFrom?.let { binding.etDateFrom.setText(dateFormat.format(it)) }
+        dateTo?.let { binding.etDateTo.setText(dateFormat.format(it)) }
+        if (minSizeBytes > 0L) {
+            binding.etMinSize.setText(String.format("%.2f", minSizeBytes / (1024.0 * 1024.0)))
+        }
+        if (maxSizeBytes < Long.MAX_VALUE) {
+            binding.etMaxSize.setText(String.format("%.2f", maxSizeBytes / (1024.0 * 1024.0)))
+        }
+        
+        updateSortButtonText()
     }
 
     override fun onDestroy() {

@@ -1,4 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Moto Sensor Logger</string>
+    
+    <!-- Search and Filter Strings -->
+    <string name="search_log_files_hint">Search log files…</string>
+    <string name="filters">Filters</string>
+    <string name="hide_filters">Hide Filters</string>
+    <string name="clear">Clear</string>
+    <string name="date_range">Date Range</string>
+    <string name="from_date">From date</string>
+    <string name="to_date">To date</string>
+    <string name="file_size_range">File Size Range</string>
+    <string name="min_size_mb">Min size (MB)</string>
+    <string name="max_size_mb">Max size (MB)</string>
+    <string name="sort_files">Sort Files</string>
+    <string name="sort_name_asc">Name (A-Z)</string>
+    <string name="sort_name_desc">Name (Z-A)</string>
+    <string name="sort_date_newest">Date (Newest)</string>
+    <string name="sort_date_oldest">Date (Oldest)</string>
+    <string name="sort_size_largest">Size (Largest)</string>
+    <string name="sort_size_smallest">Size (Smallest)</string>
+    <string name="sort_date_desc">Sort: Date ↓</string>
+    <string name="sort_date_asc">Sort: Date ↑</string>
+    <string name="sort_name_desc_btn">Sort: Name ↓</string>
+    <string name="sort_name_asc_btn">Sort: Name ↑</string>
+    <string name="sort_size_desc_btn">Sort: Size ↓</string>
+    <string name="sort_size_asc_btn">Sort: Size ↑</string>
+    <string name="all_filters_cleared">All filters cleared</string>
+    <string name="log_files_count">Log Files: %1$d</string>
+    <string name="log_files_count_filtered">Log Files: %1$d of %2$d</string>
 </resources>
