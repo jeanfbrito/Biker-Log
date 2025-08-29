@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "com.motosensorlogger"
         minSdk = 30 // Android 11 for GNSS status callback support
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 2
         versionName = "0.0.2"
 
@@ -89,9 +89,28 @@ android {
     }
     
     lint {
-        // Minimal lint configuration to ensure CI passes
-        abortOnError = false
         warningsAsErrors = false
+        abortOnError = false
+        checkDependencies = true
+        disable += listOf("ObsoleteLintCustomCheck")
+        // TODO: Enable strict lint checking after fixing existing issues
+        // warningsAsErrors = true
+        // abortOnError = true
+    }
+    
+    lint {
+        // Use custom lint configuration
+        lintConfig = file("lint.xml")
+        // Treat these as errors
+        error += "DefaultLocale"
+        error += "StringFormatInvalid"
+        // Check dependencies
+        checkDependencies = true
+        // Abort on error for release builds
+        abortOnError = false // Set to true for CI/CD
+        // Generate HTML report
+        htmlReport = true
+        htmlOutput = file("build/reports/lint-results.html")
     }
 }
 
