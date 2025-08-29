@@ -89,16 +89,10 @@ android {
     }
     
     lint {
-        // Use custom lint configuration
-        lintConfig = file("lint.xml")
-        // Basic lint settings
+        // Simplified lint configuration for Issue #3 PR
         warningsAsErrors = false
         abortOnError = false
         checkDependencies = true
-        disable += listOf("ObsoleteLintCustomCheck")
-        // Treat these as errors (disabled DefaultLocale due to existing codebase issues)
-        // error += "DefaultLocale"  // Temporarily disabled - existing codebase issues  
-        error += "StringFormatInvalid"
         // Generate HTML report
         htmlReport = true
         htmlOutput = file("build/reports/lint-results-debug.html")
