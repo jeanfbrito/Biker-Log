@@ -7,6 +7,7 @@ import android.view.View
 import com.motosensorlogger.filters.TelemetryCurveRenderer
 import kotlin.math.min
 import kotlin.math.sqrt
+import java.util.Locale
 
 /**
  * Reusable G-Force meter view for displaying acceleration forces
@@ -332,7 +333,7 @@ class GForceView
 
                     // Current Z value
                     textPaint.color = barPaint.color
-                    canvas.drawText(String.format("%.1fg", gForceZ), barX + barWidth / 2, barY - 10, textPaint)
+                    canvas.drawText(String.format(Locale.getDefault(), "%.1fg", gForceZ), barX + barWidth / 2, barY - 10, textPaint)
                 }
             }
         }

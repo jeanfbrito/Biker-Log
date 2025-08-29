@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.min
+import java.util.Locale
 
 /**
  * Motorcycle visual inclinometer showing bike profile for pitch and rear view for roll
@@ -409,6 +410,6 @@ class MotoInclinometerView
                     else -> Color.GREEN
                 }
             valuePaint.textSize = 28f
-            canvas.drawText(String.format("%+.1f°", angle), x, y + 20f, valuePaint)
+            canvas.drawText(String.format(Locale.getDefault(), "%+.1f°", angle), x, y + 20f, valuePaint)
         }
     }

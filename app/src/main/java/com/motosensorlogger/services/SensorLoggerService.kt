@@ -18,6 +18,7 @@ import com.motosensorlogger.calibration.CalibrationData
 import com.motosensorlogger.calibration.CalibrationService
 import com.motosensorlogger.data.*
 import com.motosensorlogger.settings.SettingsManager
+import java.util.Locale
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.util.concurrent.atomic.AtomicBoolean
@@ -359,8 +360,9 @@ class SensorLoggerService : Service(), SensorEventListener {
         val sessionMetadata =
             if (validCalibration != null) {
                 "Calibrated: pitch=${"%.1f".format(
+                    Locale.US,
                     validCalibration.referencePitch,
-                )}°, roll=${"%.1f".format(validCalibration.referenceRoll)}°, quality=${validCalibration.quality.getQualityLevel()}"
+                )}°, roll=${"%.1f".format(Locale.US, validCalibration.referenceRoll)}°, quality=${validCalibration.quality.getQualityLevel()}"
             } else {
                 "Not calibrated - recording raw sensor data"
             }

@@ -13,6 +13,7 @@ import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.IBinder
 import android.view.MenuItem
+import java.util.Locale
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
@@ -553,8 +554,8 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         val displayRoll = displayAngles.second
 
         // Update angle text displays
-        tvPitchValue.text = String.format("%+.1f°", displayPitch)
-        tvRollValue.text = String.format("%+.1f°", displayRoll)
+        tvPitchValue.text = String.format(Locale.getDefault(), "%+.1f°", displayPitch)
+        tvRollValue.text = String.format(Locale.getDefault(), "%+.1f°", displayRoll)
 
         // Color code based on angle severity
         tvPitchValue.setTextColor(
@@ -577,12 +578,12 @@ class TelemetryActivity : AppCompatActivity(), SensorEventListener {
         gForceView.setGForce(gForceX, gForceY, gForceZ)
 
         // Update G-force text displays
-        tvGForceX.text = String.format("%+.2fg", gForceX)
-        tvGForceY.text = String.format("%+.2fg", gForceY)
-        tvGForceZ.text = String.format("%.2fg", gForceZ)
+        tvGForceX.text = String.format(Locale.getDefault(), "%+.2fg", gForceX)
+        tvGForceY.text = String.format(Locale.getDefault(), "%+.2fg", gForceY)
+        tvGForceZ.text = String.format(Locale.getDefault(), "%.2fg", gForceZ)
 
         val magnitude = gForceView.getTotalMagnitude()
-        tvGForceMag.text = String.format("%.2fg", magnitude)
+        tvGForceMag.text = String.format(Locale.getDefault(), "%.2fg", magnitude)
 
         // Color code G-forces using the view's color logic
         tvGForceX.setTextColor(gForceView.getColorForMagnitude(abs(gForceX)))
