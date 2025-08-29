@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "com.motosensorlogger"
         minSdk = 30 // Android 11 for GNSS status callback support
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
