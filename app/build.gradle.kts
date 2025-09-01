@@ -108,7 +108,7 @@ configurations {
 dependencies {
     // Core Android dependencies
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.3")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.12.0")
@@ -125,8 +125,8 @@ dependencies {
     implementation("com.opencsv:opencsv:5.12.0")
 
     // Lifecycle components for sensor management
-    implementation("androidx.lifecycle:lifecycle-service:2.9.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.2")
+    implementation("androidx.lifecycle:lifecycle-service:2.9.3")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.3")
 
     // WorkManager for background processing
     implementation("androidx.work:work-runtime-ktx:2.10.3")
