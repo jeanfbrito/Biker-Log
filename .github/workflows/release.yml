@@ -56,7 +56,7 @@ jobs:
           sed -i "s/versionCode = [0-9]*/versionCode = $VERSION_CODE/" app/build.gradle.kts
       
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
       
       - name: Build debug APK
         run: ./gradlew assembleDebug
