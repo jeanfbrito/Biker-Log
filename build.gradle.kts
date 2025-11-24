@@ -2,7 +2,7 @@
 plugins {
     id("com.android.application") version "8.9.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.10" apply false
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.2" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "14.0.1" apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.8" apply false
 }
 
